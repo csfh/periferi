@@ -1,0 +1,9 @@
+Vendored, unmodified: tomlc17 (TOML 1.0 parser in C), MIT license, see LICENSE.
+Source:  https://github.com/cktan/tomlc17
+Commit:  fba134d7d1f9b58414f908600b2869f7e55ff2c4 (2026-10-05)
+Files:   src/tomlc17.c, src/tomlc17.h, LICENSE (copied as-is)
+sha256:
+  40de13f674959b120606ccee5064d07d7a7c5c0b0affe69d6b10b12248ca950e  tomlc17.c
+  29c0909092f4b23c7edce705167064f4a90548db5334b4aa2cd95d7ad801adb9  tomlc17.h
+  f949d0976f85076c96fc5122f0632b5a1b806d8b2badbe968c42c97230e6e79e  LICENSE
+To update: fetch the files from a newer commit, verify, and change this note.
