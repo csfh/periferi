@@ -1,0 +1,23 @@
+# peri module: Drop CTRL v2 keyboard, controlled over QMK XAP.
+#
+# schema        module file format version (this file is 1)
+# id            lowercase letters, digits and '-'; must equal the directory name
+# engine        built-in protocol engine that does the talking ("xap")
+# [match]       which HID interface this module drives. vid and pid are required;
+#               usage_page and usage pick the one interface of the device
+# [capabilities] what the module can do, for the UI and the daemon
+
+schema = 1
+id = "drop-ctrl-v2"
+name = "Drop CTRL v2"
+version = "0.1.0"
+engine = "xap"
+
+[match]
+vid = 0x359b
+pid = 0x0009
+usage_page = 0xff51
+usage = 0x58
+
+[capabilities]
+rgb = true

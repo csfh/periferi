@@ -1,0 +1,12 @@
+# Valid file, but the id does not match its directory name: must be skipped.
+schema = 1
+id = "other-id"
+name = "Mismatch"
+version = "1.0.0"
+engine = "xap"
+
+[match]
+vid = 1
+pid = 2
+usage_page = 0xff51
+usage = 0x58

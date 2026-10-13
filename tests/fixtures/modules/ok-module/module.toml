@@ -1,0 +1,11 @@
+schema = 1
+id = "ok-module"
+name = "An OK module"
+version = "1.2.3"
+engine = "xap"
+
+[match]
+vid = 0x1234
+pid = 0xabcd
+usage_page = 0xff51
+usage = 0x58
