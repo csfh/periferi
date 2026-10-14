@@ -598,12 +598,14 @@ static int cmd_feature(const char *arg, const char *id_arg, const char *len_arg)
 }
 
 // Razer queries `peri razer` may send. An allowlist like the XAP one: it holds only queries
-// that read (firmware get, brightness get). Setting a device mode or any lighting is never on it.
-// `args` is at least `size` long. Brightness get takes variable storage 1, LED id 0, and a zero
-// placeholder for the value.
-static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[3]; } razer_queries[] = {
-    { "firmware", 0x00, 0x81, 2, { 0, 0, 0 } },
-    { "brightness", 0x0f, 0x84, 3, { 0x01, 0x00, 0x00 } },
+// that read (firmware get, brightness get, and the standard-LED getters for effect and colour).
+// Setting a device mode or any lighting is never on it. `args` is at least `size` long. The
+// getters take variable storage 1 and LED id 0, then zero placeholders for the values.
+static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[5]; } razer_queries[] = {
+    { "firmware", 0x00, 0x81, 2, { 0, 0, 0, 0, 0 } },
+    { "brightness", 0x0f, 0x84, 3, { 0x01, 0x00, 0x00, 0, 0 } },
+    { "led-effect", 0x03, 0x82, 3, { 0x01, 0x00, 0x00, 0, 0 } },
+    { "led-rgb", 0x03, 0x81, 5, { 0x01, 0x00, 0x00, 0x00, 0x00 } },
 };
 
 // Send one allowlisted query to a Razer control interface and print the raw reply frame,
@@ -619,7 +621,7 @@ static int cmd_razer(const char *arg, const char *query)
     while (q < sizeof razer_queries / sizeof *razer_queries && strcmp(razer_queries[q].name, query))
         q++;
     if (q == sizeof razer_queries / sizeof *razer_queries) {
-        fprintf(stderr, "peri: unknown razer query '%s' (known: firmware, brightness)\n", query);
+        fprintf(stderr, "peri: unknown razer query '%s' (known: firmware, brightness, led-effect, led-rgb)\n", query);
         return 2;
     }
     if (!node_allowed(name, false))
@@ -635,9 +637,9 @@ static int cmd_razer(const char *arg, const char *query)
                         razer_queries[q].args, &reply, raw, &got);
     close(fd);
 
-    if (got == RAZER_REPORT_LEN) {
-        printf("raw");
-        for (int i = 0; i < RAZER_REPORT_LEN; i++)
+    if (got > 0) {
+        printf("raw %d bytes:", got);
+        for (int i = 0; i < got && i < RAZER_REPORT_LEN; i++)
             printf(" %02x", raw[i]);
         putchar('\n');
     } else {
@@ -954,6 +956,6 @@ int main(int argc, char **argv)
     if (argc == 4 && strcmp(argv[1], "set") == 0)
         return cmd_set(argv[2], argv[3]);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|xap <node> <route-hex>|blob <node>|status <module-id>|set <module-id> brightness=<0-255>|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|set <module-id> brightness=<0-255>|rgb get|set <key=value>...|save>\n");
     return 2;
 }

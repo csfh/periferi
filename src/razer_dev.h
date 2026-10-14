@@ -10,8 +10,8 @@
 int razer_open(const char *node);
 
 // Send one request as a feature report and poll for its reply (about one second).
-// `raw` receives the last 64 bytes read, even when they do not decode, and `got` says how
-// many bytes that read returned. Returns 0 for a valid reply (check reply->status), a
+// `raw` receives the bytes of the last read, even when they do not decode (a reply that is not
+// 64 bytes is never decoded), and `got` says how many bytes that read returned. Returns 0 for a valid reply (check reply->status), a
 // razer_error for a malformed one, or RAZER_ERR_IO / RAZER_ERR_NO_REPLY.
 int razer_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t *args,
                struct razer_reply *reply, uint8_t raw[RAZER_REPORT_LEN], int *got);

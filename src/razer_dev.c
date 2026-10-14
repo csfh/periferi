@@ -51,9 +51,10 @@ int razer_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t
         uint8_t buf[RAZER_REPORT_LEN] = { RAZER_REPORT_ID };
         int n = ioctl(fd, HIDIOCGFEATURE(RAZER_REPORT_LEN), buf);
         *got = n;
+        if (n > 0) // keep what came back, even when it is not a whole frame
+            memcpy(raw, buf, (size_t)n < sizeof buf ? (size_t)n : sizeof buf);
         if (n != RAZER_REPORT_LEN)
             continue;
-        memcpy(raw, buf, sizeof buf);
         rc = razer_decode(buf, cls, cmd, reply);
         if (rc == 0 && reply->status == RAZER_STATUS_BUSY)
             continue;
