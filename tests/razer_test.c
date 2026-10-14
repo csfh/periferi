@@ -112,6 +112,25 @@ int main(void)
               && frame[11] == 3 && frame[63] == 0x5a,
           "spectrum frame");
 
+    // Control reports, bytes as captured from the real mic.
+    struct razer_event ev;
+    const uint8_t muted[16] = { 0x05, 0x11, 0x00 }, unmuted[16] = { 0x05, 0x11, 0x01 };
+    const uint8_t dial_top[16] = { 0x05, 0x0f, 0x64 }, dial_low[16] = { 0x05, 0x0f, 0x14 };
+    check(razer_event_decode(muted, 16, &ev) && ev.kind == RAZER_EVENT_MUTE && ev.value == 0,
+          "event muted");
+    check(razer_event_decode(unmuted, 16, &ev) && ev.kind == RAZER_EVENT_MUTE && ev.value == 1,
+          "event unmuted");
+    check(razer_event_decode(dial_top, 16, &ev) && ev.kind == RAZER_EVENT_DIAL && ev.value == 0x64,
+          "event dial top");
+    check(razer_event_decode(dial_low, 16, &ev) && ev.kind == RAZER_EVENT_DIAL && ev.value == 0x14,
+          "event dial low");
+    const uint8_t odd_type[16] = { 0x05, 0x12, 0x00 }, odd_mute[16] = { 0x05, 0x11, 0x02 };
+    const uint8_t other_id[16] = { 0x03, 0x11, 0x01 };
+    check(!razer_event_decode(odd_type, 16, &ev) && ev.kind == RAZER_EVENT_NONE, "unknown type");
+    check(!razer_event_decode(odd_mute, 16, &ev) && ev.kind == RAZER_EVENT_NONE, "unknown mute value");
+    check(!razer_event_decode(other_id, 16, &ev), "other report id");
+    check(!razer_event_decode(muted, 2, &ev), "short report");
+
     uint8_t big[RAZER_REQUEST_ARGS_MAX + 1] = { 0 };
     check(razer_encode(frame, 0x52, 0, 0, big, RAZER_REQUEST_ARGS_MAX) == 0, "54 args fit");
     check(razer_encode(frame, 0x52, 0, 0, nullptr, RAZER_REQUEST_ARGS_MAX + 1) == RAZER_ERR_ARGS,

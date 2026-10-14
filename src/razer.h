@@ -69,6 +69,25 @@ enum razer_effect {
 size_t razer_effect_args(uint8_t storage, uint8_t effect, const uint8_t rgb[3],
                          uint8_t args[RAZER_EFFECT_ARGS_MAX]);
 
+// What the mic's controls report on the control interface, as input report 5 (16 bytes with the
+// id), seen in passive captures on 2026-10-14. Neither is documented by Razer.
+//   05 11 xx   tap-to-mute state, flips on every tap: 00 = muted, 01 = unmuted
+//   05 0f nn   dial level, absolute, steps of 2, 0x14..0x64 (20..100) in the captures
+enum razer_event_kind {
+    RAZER_EVENT_NONE,  // not a report we know
+    RAZER_EVENT_MUTE,  // value: 0 muted, 1 unmuted
+    RAZER_EVENT_DIAL,  // value: the level as reported
+};
+
+struct razer_event {
+    enum razer_event_kind kind;
+    uint8_t value;
+};
+
+// Decode one report read from the control interface. Unknown ids, types and mute values give
+// RAZER_EVENT_NONE (and false), so a firmware that reports more never breaks a reader.
+bool razer_event_decode(const uint8_t *report, size_t len, struct razer_event *ev);
+
 // Build a request frame whose data size is `len`. A null `args` means `len` zero bytes: queries
 // such as firmware get declare a size but carry nothing. Returns 0, or RAZER_ERR_ARGS.
 int razer_encode(uint8_t frame[RAZER_REPORT_LEN], uint8_t transaction, uint8_t cls, uint8_t cmd,

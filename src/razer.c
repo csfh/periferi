@@ -76,3 +76,19 @@ size_t razer_effect_args(uint8_t storage, uint8_t effect, const uint8_t rgb[3],
     memcpy(args + 6, rgb, 3);
     return 9;
 }
+
+bool razer_event_decode(const uint8_t *report, size_t len, struct razer_event *ev)
+{
+    *ev = (struct razer_event){ RAZER_EVENT_NONE, 0 };
+    if (len < 3 || report[0] != 0x05)
+        return false;
+    if (report[1] == 0x11 && report[2] <= 1) {
+        *ev = (struct razer_event){ RAZER_EVENT_MUTE, report[2] };
+        return true;
+    }
+    if (report[1] == 0x0f) {
+        *ev = (struct razer_event){ RAZER_EVENT_DIAL, report[2] };
+        return true;
+    }
+    return false;
+}
