@@ -82,13 +82,20 @@ int razer_firmware(int fd, uint8_t version[2])
     return rc;
 }
 
-// Arguments: variable storage 1, LED id 0, and a zero placeholder for the value.
-int razer_brightness(int fd, uint8_t *brightness)
+// Arguments: variable storage, LED id 0, and a zero placeholder for the value when asking.
+int razer_brightness(int fd, uint8_t storage, uint8_t *brightness)
 {
-    const uint8_t args[3] = { 0x01, 0x00, 0x00 };
+    const uint8_t args[3] = { storage, 0x00, 0x00 };
     struct razer_reply reply;
     int rc = query(fd, 0x0f, 0x84, 3, args, 3, &reply);
     if (rc == 0)
         *brightness = reply.args[2];
     return rc;
+}
+
+int razer_set_brightness(int fd, uint8_t storage, uint8_t brightness)
+{
+    const uint8_t args[3] = { storage, 0x00, brightness };
+    struct razer_reply reply;
+    return query(fd, 0x0f, 0x04, 3, args, 0, &reply);
 }

@@ -1,8 +1,9 @@
 # peri module: Razer Seiren V3 Chroma microphone, controlled over Razer's vendor feature
 # reports (the "razer" engine). The file format is described in catalog/drop-ctrl-v2/module.toml.
 #
-# No capabilities yet: the engine only answers read queries (`peri razer <node> firmware`),
-# so nothing here offers lighting controls until the daemon can really drive them.
+# No capabilities yet: nothing here offers lighting controls to a panel until the daemon can
+# really drive them. `peri status` reads it and `peri set ... brightness=N` changes its brightness
+# (the device keeps the value, so sets are not for sliders).
 
 schema = 1
 id = "razer-seiren-v3-chroma"
@@ -15,3 +16,8 @@ vid = 0x1532
 pid = 0x056f
 usage_page = 0xff53
 usage = 0x04
+
+[limits]
+# The brightness range of the protocol (one byte), not a limit read from the device: the
+# daemon refuses brightness writes for a module that states none.
+max_brightness = 255

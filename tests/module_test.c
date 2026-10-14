@@ -237,7 +237,7 @@ int main(void)
     CHECK(peri_module_load(CATALOG_DIR "/razer-seiren-v3-chroma/module.toml", &m, err, sizeof err));
     CHECK(strcmp(m.id, "razer-seiren-v3-chroma") == 0 && strcmp(m.engine, "razer") == 0);
     CHECK(m.vid == 0x1532 && m.pid == 0x056f && m.usage_page == 0xff53 && m.usage == 0x04);
-    CHECK(!m.rgb && m.max_brightness == 0);
+    CHECK(!m.rgb && m.max_brightness == 255); // the protocol's range, see the module file
 
     // Ids double as path components: only [a-z0-9-], not at the edges.
     CHECK(peri_module_id_valid("drop-ctrl-v2") && peri_module_id_valid("a"));

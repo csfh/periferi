@@ -904,6 +904,19 @@ static int cmd_status(const char *id)
     return forward(req);
 }
 
+// peri set <module-id> brightness=<0-255>: change the running brightness of a module's device.
+// Asks for a live-only write, but on the Seiren the stored value follows it: each set may wear
+// the device's memory, so do not drive this from a slider drag.
+static int cmd_set(const char *id, const char *setting)
+{
+    char req[128];
+    if (snprintf(req, sizeof req, "set %s %s\n", id, setting) >= (int)sizeof req) {
+        fprintf(stderr, "peri: request too long\n");
+        return 2;
+    }
+    return forward(req);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "setup") == 0)
@@ -938,7 +951,9 @@ int main(int argc, char **argv)
         return cmd_rgb(argc, argv);
     if (argc == 3 && strcmp(argv[1], "status") == 0)
         return cmd_status(argv[2]);
+    if (argc == 4 && strcmp(argv[1], "set") == 0)
+        return cmd_set(argv[2], argv[3]);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|xap <node> <route-hex>|blob <node>|status <module-id>|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|xap <node> <route-hex>|blob <node>|status <module-id>|set <module-id> brightness=<0-255>|rgb get|set <key=value>...|save>\n");
     return 2;
 }

@@ -22,7 +22,7 @@ target_include_directories(tomlc17 PUBLIC vendor/tomlc17)
 target_compile_options(tomlc17 PRIVATE -w)
 
 add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/scan.c src/xap.c src/razer.c src/razer_dev.c)
-add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/status_cmd.c src/razer.c src/razer_dev.c)
+add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/device_cmd.c src/razer.c src/razer_dev.c)
 target_link_libraries(peri PRIVATE tomlc17)
 target_link_libraries(perid PRIVATE tomlc17)
 

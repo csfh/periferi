@@ -10,7 +10,7 @@
 #include "inventory.h"
 #include "module.h"
 #include "rgb_cmd.h"
-#include "status_cmd.h"
+#include "device_cmd.h"
 #include "scan.h"
 #include "udev.h"
 
@@ -182,9 +182,12 @@ static void handle(int client)
         (void)!write(client, reply, strlen(reply));
         return;
     }
-    if (strncmp(req, "status ", 7) == 0) {
+    if (strncmp(req, "status ", 7) == 0 || strncmp(req, "set ", 4) == 0) {
         char reply[256];
-        status_handle(req + 7, reply, sizeof reply);
+        if (req[0] == 's' && req[1] == 't')
+            status_handle(req + 7, reply, sizeof reply);
+        else
+            set_handle(req + 4, reply, sizeof reply);
         (void)!write(client, reply, strlen(reply));
         return;
     }

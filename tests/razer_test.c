@@ -72,6 +72,15 @@ int main(void)
           "brightness layout");
     check(frame[63] == 0xe8, "brightness crc");
 
+    // Brightness set, live only (storage 00, LED 00, value 3c = 60): 52 ^ 03 ^ 0f ^ 04 ^ 3c = 66.
+    // Restoring 66 (= 102): 52 ^ 03 ^ 0f ^ 04 ^ 66 = 3c.
+    const uint8_t sixty[3] = { 0x00, 0x00, 0x3c }, back[3] = { 0x00, 0x00, 0x66 };
+    check(razer_encode(frame, 0x52, 0x0f, 0x04, sixty, 3) == 0 && frame[63] == 0x66
+              && frame[9] == 0 && frame[10] == 0 && frame[11] == 0x3c,
+          "brightness set 60");
+    check(razer_encode(frame, 0x52, 0x0f, 0x04, back, 3) == 0 && frame[63] == 0x3c,
+          "brightness set 102");
+
     uint8_t big[RAZER_REQUEST_ARGS_MAX + 1] = { 0 };
     check(razer_encode(frame, 0x52, 0, 0, big, RAZER_REQUEST_ARGS_MAX) == 0, "54 args fit");
     check(razer_encode(frame, 0x52, 0, 0, nullptr, RAZER_REQUEST_ARGS_MAX + 1) == RAZER_ERR_ARGS,
