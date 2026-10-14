@@ -137,8 +137,9 @@ static const char effect_names[] =
 
 // An effect name and up to two colours (hex text, or null) as the options the frame builder takes.
 // False if the name is unknown, a colour is not six hex digits, a second colour has no first, or
-// the effect lacks what it needs (static needs a colour). *effect is the effect id.
-static bool effect_opts(const char *name, const char *color, const char *color2,
+// the effect lacks what it needs (static needs a colour). `speed` is "slow", "fast" or null, and
+// only the wave effects use it. *effect is the effect id.
+static bool effect_opts(const char *name, const char *color, const char *color2, const char *speed,
                         struct razer_effect_opts *opts, int *effect)
 {
     bool reverse = false;
@@ -151,6 +152,7 @@ static bool effect_opts(const char *name, const char *color, const char *color2,
     if (color2 && !parse_color(color2, opts->rgb[1]))
         return false;
     opts->colors = (uint8_t)(color ? (color2 ? 2 : 1) : 0);
+    opts->speed = speed && strcmp(speed, "fast") == 0 ? RAZER_WAVE_FAST : RAZER_WAVE_SLOW; // wave only
     uint8_t args[RAZER_EFFECT_ARGS_MAX];
     return razer_effect_build(0, (uint8_t)*effect, opts, args) != 0;
 }
@@ -162,7 +164,7 @@ static bool effect_opts(const char *name, const char *color, const char *color2,
 void set_handle(const char *args, char *reply, size_t size)
 {
     static const char usage[] = "err usage: set <module-id> brightness=<0-255> | effect=<name> "
-                                "[color=<rrggbb>] [color2=<rrggbb>]\n";
+                                "[color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]\n";
     char line[256], *rest; // the daemon reads at most 255 bytes: never cut a request short
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
@@ -173,9 +175,15 @@ void set_handle(const char *args, char *reply, size_t size)
 
     long brightness = -1, effect = -1;
     const char *effect_name = "";
-    const char *color = nullptr, *color2 = nullptr;
+    const char *color = nullptr, *color2 = nullptr, *speed = nullptr;
     for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
-        if (strncmp(t, "brightness=", 11) == 0 && brightness < 0) {
+        if (strncmp(t, "speed=", 6) == 0 && !speed) {
+            if (strcmp(t + 6, "slow") != 0 && strcmp(t + 6, "fast") != 0) {
+                err(reply, size, "speed must be slow or fast", id);
+                return;
+            }
+            speed = t + 6;
+        } else if (strncmp(t, "brightness=", 11) == 0 && brightness < 0) {
             char *end;
             unsigned long v = strtoul(t + 11, &end, 10);
             if (t[11] == '\0' || *end != '\0' || v > 255) {
@@ -210,14 +218,14 @@ void set_handle(const char *args, char *reply, size_t size)
         }
     }
     bool bright_set = brightness >= 0, effect_set = effect >= 0;
-    if (bright_set == effect_set || (bright_set && (color || color2))
-        || ((color || color2) && !effect_set)) {
+    if (bright_set == effect_set || (bright_set && (color || color2 || speed))
+        || ((color || color2 || speed) && !effect_set)) {
         snprintf(reply, size, "%s", usage);
         return;
     }
     struct razer_effect_opts opts;
     int effect_id_checked = -1;
-    if (effect_set && !effect_opts(effect_name, color, color2, &opts, &effect_id_checked)) {
+    if (effect_set && !effect_opts(effect_name, color, color2, speed, &opts, &effect_id_checked)) {
         err(reply, size, color2 && !color ? "a second colour needs a first"
                                           : "this effect needs a valid color=<rrggbb>", id);
         return;
@@ -290,15 +298,17 @@ static void reply_look(char *reply, size_t size, const char *id, enum peri_look_
     char brightness[8] = "unset";
     if (l->brightness >= 0)
         snprintf(brightness, sizeof brightness, "%d", l->brightness);
-    snprintf(reply, size, "ok module=%s look=%s effect=%s color=%s color2=%s brightness=%s\n", id,
+    snprintf(reply, size, "ok module=%s look=%s effect=%s color=%s color2=%s speed=%s brightness=%s\n", id,
              peri_look_which_name(which), l->effect[0] ? l->effect : "unset",
-             l->color[0] ? l->color : "none", l->color2[0] ? l->color2 : "none", brightness);
+             l->color[0] ? l->color : "none", l->color2[0] ? l->color2 : "none",
+             l->speed[0] ? l->speed : "default", brightness);
 }
 
 void look_handle(const char *args, char *reply, size_t size)
 {
     static const char usage[] = "err usage: look <module-id> get|save|apply <unmuted|muted> "
-                                "[effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [brightness=<0-255>]\n";
+                                "[effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] "
+                                "[brightness=<0-255>]\n";
     char line[256], *rest; // as above
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
@@ -337,6 +347,12 @@ void look_handle(const char *args, char *reply, size_t size)
                 return;
             }
             snprintf(want.color, sizeof want.color, "%s", t + 6);
+        } else if (strncmp(t, "speed=", 6) == 0 && !want.speed[0]) {
+            if (strcmp(t + 6, "slow") != 0 && strcmp(t + 6, "fast") != 0) {
+                err(reply, size, "speed must be slow or fast", id);
+                return;
+            }
+            snprintf(want.speed, sizeof want.speed, "%s", t + 6);
         } else if (strncmp(t, "color2=", 7) == 0 && !want.color2[0]) {
             uint8_t rgb[3];
             if (!parse_color(t + 7, rgb)) {
@@ -405,7 +421,7 @@ void look_handle(const char *args, char *reply, size_t size)
     int effect_checked = -1;
     if (l.effect[0]
         && !effect_opts(l.effect, l.color[0] ? l.color : nullptr, l.color2[0] ? l.color2 : nullptr,
-                        &opts, &effect_checked)) {
+                        l.speed[0] ? l.speed : nullptr, &opts, &effect_checked)) {
         err(reply, size, "the saved effect is not valid", id);
         return;
     }

@@ -64,11 +64,17 @@ enum razer_effect {
 };
 #define RAZER_EFFECT_ARGS_MAX 12
 
+// The wave's speed byte. Slow is what was always sent (the public reference's value); fast is the
+// "fast wave" value that reference mentions for one device. Neither number is from this microphone.
+#define RAZER_WAVE_SLOW 0x28
+#define RAZER_WAVE_FAST 0x10
+
 // The parameters an effect may take. colors is how many of rgb[] are used (0, 1 or 2).
 struct razer_effect_opts {
     uint8_t colors;
     uint8_t rgb[2][3];
     uint8_t reverse;  // wave: 0 or 1, which way round (which is which is not established)
+    uint8_t speed;    // wave: the speed byte (lower is faster); 0 means RAZER_WAVE_SLOW
 };
 
 // The effect for a name: "none", "static", "breathing", "spectrum", "wave" or "wave-reverse".

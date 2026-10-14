@@ -79,6 +79,13 @@ static bool clean(const struct peri_look *in, struct peri_look *out)
             && !lower_hex(in->color2, out->color2))
             return false;
     }
+    // A speed belongs to the wave effects only; anything else drops it, a bad one spoils the look.
+    if (in->speed[0]) {
+        if (strcmp(in->speed, "slow") != 0 && strcmp(in->speed, "fast") != 0)
+            return false;
+        if (out->effect[0] && razer_effect_id(out->effect) == RAZER_EFFECT_WAVE)
+            snprintf(out->speed, sizeof out->speed, "%s", in->speed);
+    }
     if (in->brightness < -1 || in->brightness > 255)
         return false;
     out->brightness = in->brightness;
@@ -122,6 +129,8 @@ static void load_both(const char *module_id, struct peri_look looks[2])
             toml_datum_t color = toml_seek(result.toptab, key);
             snprintf(key, sizeof key, "%s.color2", which_names[i]);
             toml_datum_t color2 = toml_seek(result.toptab, key);
+            snprintf(key, sizeof key, "%s.speed", which_names[i]);
+            toml_datum_t speed = toml_seek(result.toptab, key);
             snprintf(key, sizeof key, "%s.brightness", which_names[i]);
             toml_datum_t brightness = toml_seek(result.toptab, key);
 
@@ -131,6 +140,8 @@ static void load_both(const char *module_id, struct peri_look looks[2])
                 snprintf(raw.color, sizeof raw.color, "%s", color.u.s);
             if (color2.type == TOML_STRING && color2.u.s && strlen(color2.u.s) == 6)
                 snprintf(raw.color2, sizeof raw.color2, "%s", color2.u.s);
+            if (speed.type == TOML_STRING && speed.u.s && strlen(speed.u.s) < sizeof raw.speed)
+                snprintf(raw.speed, sizeof raw.speed, "%s", speed.u.s);
             if (brightness.type == TOML_INT64 && brightness.u.int64 >= 0 && brightness.u.int64 <= 255)
                 raw.brightness = (int)brightness.u.int64;
 
@@ -141,6 +152,7 @@ static void load_both(const char *module_id, struct peri_look looks[2])
                 raw.effect[0] = '\0';
                 raw.color[0] = '\0';
                 raw.color2[0] = '\0';
+                raw.speed[0] = '\0';
                 clean(&raw, &good);
             }
             looks[i] = good;
@@ -167,6 +179,8 @@ static int append_look(char *buf, size_t size, enum peri_look_which which, const
         n += snprintf(buf + n, size - (size_t)n, "color = \"%s\"\n", l->color);
     if (l->color2[0])
         n += snprintf(buf + n, size - (size_t)n, "color2 = \"%s\"\n", l->color2);
+    if (l->speed[0])
+        n += snprintf(buf + n, size - (size_t)n, "speed = \"%s\"\n", l->speed);
     if (l->brightness >= 0)
         n += snprintf(buf + n, size - (size_t)n, "brightness = %d\n", l->brightness);
     return n + snprintf(buf + n, size - (size_t)n, "\n");

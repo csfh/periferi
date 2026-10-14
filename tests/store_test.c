@@ -161,6 +161,30 @@ int main(void)
     struct peri_look nope = look("wheel", "", -1);   // not an effect this mic shows
     CHECK(!peri_look_save(ID, MU, &nope));
 
+    // A wave may be slow or fast; no other effect keeps a speed, and a bad speed is refused.
+    struct peri_look fast_wave = look("wave", "", -1);
+    snprintf(fast_wave.speed, sizeof fast_wave.speed, "%s", "fast");
+    CHECK(peri_look_save(ID, UN, &fast_wave));
+    CHECK(strcmp(peri_look_load(ID, UN).speed, "fast") == 0);
+    struct peri_look wr = look("wave-reverse", "", 40);
+    snprintf(wr.speed, sizeof wr.speed, "%s", "slow");
+    CHECK(peri_look_save(ID, MU, &wr));
+    CHECK(strcmp(peri_look_load(ID, MU).speed, "slow") == 0 && strcmp(peri_look_load(ID, MU).effect, "wave-reverse") == 0);
+    CHECK(strcmp(peri_look_load(ID, UN).speed, "fast") == 0);           // the other look is untouched
+    struct peri_look sp2 = look("spectrum", "", -1);
+    snprintf(sp2.speed, sizeof sp2.speed, "%s", "fast");               // spectrum has no speed
+    CHECK(peri_look_save(ID, UN, &sp2));
+    CHECK(peri_look_load(ID, UN).speed[0] == '\0');
+    struct peri_look bad_speed = look("wave", "", -1);
+    snprintf(bad_speed.speed, sizeof bad_speed.speed, "%s", "warp");
+    CHECK(!peri_look_save(ID, UN, &bad_speed));
+    CHECK(strcmp(peri_look_load(ID, UN).effect, "spectrum") == 0);      // the refused save changed nothing
+    write_file(file, "[unmuted]\neffect = \"wave\"\nspeed = \"warp\"\nbrightness = 7\n");
+    l = peri_look_load(ID, UN);                                        // a bad speed spoils only the look
+    CHECK(l.effect[0] == '\0' && l.speed[0] == '\0' && l.brightness == 7);
+    write_file(file, "[unmuted]\neffect = \"spectrum\"\nspeed = \"fast\"\n");
+    CHECK(peri_look_load(ID, UN).speed[0] == '\0');                    // a stray speed is ignored
+
     // The old single-look format (what an earlier version wrote) loads as two empty looks, and
     // the first save replaces it.
     write_file(file, "effect = \"none\"\n");

@@ -75,7 +75,7 @@ size_t razer_effect_build(uint8_t storage, uint8_t effect, const struct razer_ef
         return 6;
     case RAZER_EFFECT_WAVE:
         args[3] = opts && opts->reverse ? 1 : 0;
-        args[4] = 0x28; // speed, as the reference sends it
+        args[4] = opts && opts->speed ? opts->speed : RAZER_WAVE_SLOW;
         return 6;
     case RAZER_EFFECT_STATIC:
         if (colors < 1)

@@ -115,6 +115,15 @@ int main(void)
     check(razer_effect_build(1, RAZER_EFFECT_WAVE, &o, a) == 6 && memcmp(a, want_wave_r, 6) == 0,
           "wave reversed");
     o.reverse = 0;
+    o.speed = RAZER_WAVE_FAST;                 // the fast wave: the same frame with the faster byte
+    const uint8_t want_wave_fast[6] = { 1, 0, 4, 0, 0x10, 0 };
+    check(razer_effect_build(1, RAZER_EFFECT_WAVE, &o, a) == 6 && memcmp(a, want_wave_fast, 6) == 0,
+          "wave fast");
+    o.speed = 0;
+    check(razer_effect_build(1, RAZER_EFFECT_WAVE, &o, a) == 6 && a[4] == 0x28, "wave default speed");
+    o.speed = RAZER_WAVE_FAST;                 // other effects have no speed byte, so it is ignored
+    check(razer_effect_build(1, RAZER_EFFECT_SPECTRUM, &o, a) == 6 && a[4] == 0, "spectrum ignores speed");
+    o.speed = 0;
 
 
     const uint8_t want_breath_two[12] = { 1, 0, 2, 2, 0, 2, 0, 0xff, 0, 0xff, 0, 0 };
