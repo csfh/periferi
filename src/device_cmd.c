@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "controls.h"
 #include "module.h"
 #include "razer_dev.h"
 #include "scan.h"
@@ -88,9 +89,15 @@ void status_handle(const char *args, char *reply, size_t size)
         return;
     }
     // The firmware bytes are shown raw: what they mean is not established. Brightness is the
-    // value the device keeps (storage 1), not necessarily the one it is showing right now.
-    snprintf(reply, size, "ok module=%s firmware=%02x%02x brightness=%u\n", m.id, firmware[0],
-             firmware[1], brightness);
+    // value the device keeps (storage 1), not necessarily the one it is showing right now. Mute
+    // and dial are what the mic last reported to the daemon, "unknown" until it does.
+    struct razer_state controls = controls_state(m.id);
+    char dial[8] = "unknown";
+    if (controls.dial >= 0)
+        snprintf(dial, sizeof dial, "%d", controls.dial);
+    snprintf(reply, size, "ok module=%s firmware=%02x%02x brightness=%u mute=%s dial=%s\n", m.id,
+             firmware[0], firmware[1], brightness,
+             controls.mute < 0 ? "unknown" : controls.mute ? "unmuted" : "muted", dial);
 }
 
 // "0000ff" -> {0x00, 0x00, 0xff}. Exactly six hex digits.

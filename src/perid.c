@@ -2,11 +2,13 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <poll.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include "common.h"
+#include "controls.h"
 #include "inventory.h"
 #include "module.h"
 #include "rgb_cmd.h"
@@ -174,6 +176,8 @@ static void handle(int client)
     if (strncmp(req, "use ", 4) == 0 || strncmp(req, "remove ", 7) == 0) {
         bool use = req[0] == 'u';
         module_verb(client, use, req + (use ? 4 : 7));
+        controls_detach(); // a module came or went: the reader decides again
+        controls_rescan();
         return;
     }
     if (strncmp(req, "rgb ", 4) == 0) {
@@ -222,10 +226,28 @@ int main(void)
     }
     fprintf(stderr, "perid: listening on %s\n", addr.sun_path);
 
+    // One thread: wait for a client or for the microphone's controls, whichever speaks first.
+    // While no device is attached, wake every few seconds to look for one.
+    controls_rescan();
     while (!stop) {
+        struct pollfd fds[2] = { { .fd = fd, .events = POLLIN },
+                                 { .fd = controls_fd(), .events = POLLIN } };
+        int ready = poll(fds, 2, controls_fd() < 0 ? 3000 : -1);
+        if (ready < 0) {
+            if (errno == EINTR)
+                continue;
+            perror("perid: poll");
+            break;
+        }
+        if (controls_fd() >= 0 && fds[1].revents)
+            controls_service(fds[1].revents);
+        controls_rescan(); // no-op while attached
+
+        if (!(fds[0].revents & POLLIN))
+            continue;
         int client = accept4(fd, nullptr, nullptr, SOCK_CLOEXEC);
         if (client < 0) {
-            if (errno == EINTR)
+            if (errno == EINTR || errno == EAGAIN)
                 continue;
             perror("perid: accept");
             break;
@@ -233,6 +255,7 @@ int main(void)
         handle(client);
         close(client);
     }
+    controls_detach();
 
     unlink(addr.sun_path);
     close(fd);

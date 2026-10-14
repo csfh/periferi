@@ -30,6 +30,18 @@ int razer_open(const char *node)
     return fd;
 }
 
+int razer_open_events(const char *node)
+{
+    struct peri_device dev;
+    if (!peri_read_device(node, &dev) || dev.vid != 0x1532 || dev.pid != 0x056F
+        || dev.usage_page != 0xFF53 || dev.usage != 0x04)
+        return -1;
+
+    char path[64];
+    snprintf(path, sizeof path, "/dev/%s", node);
+    return open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+}
+
 int razer_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t *args,
                struct razer_reply *reply, uint8_t raw[RAZER_REPORT_LEN], int *got)
 {

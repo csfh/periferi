@@ -92,3 +92,11 @@ bool razer_event_decode(const uint8_t *report, size_t len, struct razer_event *e
     }
     return false;
 }
+
+void razer_state_apply(struct razer_state *state, const struct razer_event *ev)
+{
+    if (ev->kind == RAZER_EVENT_MUTE)
+        state->mute = ev->value;
+    else if (ev->kind == RAZER_EVENT_DIAL)
+        state->dial = ev->value;
+}

@@ -88,6 +88,16 @@ struct razer_event {
 // RAZER_EVENT_NONE (and false), so a firmware that reports more never breaks a reader.
 bool razer_event_decode(const uint8_t *report, size_t len, struct razer_event *ev);
 
+// What the controls last reported. -1 means nothing has been seen yet: the mic cannot be asked
+// for its state, so it stays unknown until the first tap or turn.
+struct razer_state {
+    int mute; // -1 unknown, 0 muted, 1 unmuted
+    int dial; // -1 unknown, else the last level as reported
+};
+#define RAZER_STATE_UNKNOWN ((struct razer_state){ -1, -1 })
+
+void razer_state_apply(struct razer_state *state, const struct razer_event *ev);
+
 // Build a request frame whose data size is `len`. A null `args` means `len` zero bytes: queries
 // such as firmware get declare a size but carry nothing. Returns 0, or RAZER_ERR_ARGS.
 int razer_encode(uint8_t frame[RAZER_REPORT_LEN], uint8_t transaction, uint8_t cls, uint8_t cmd,

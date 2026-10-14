@@ -131,6 +131,21 @@ int main(void)
     check(!razer_event_decode(other_id, 16, &ev), "other report id");
     check(!razer_event_decode(muted, 2, &ev), "short report");
 
+    // The state starts unknown and follows the events, one control at a time.
+    struct razer_state st = RAZER_STATE_UNKNOWN;
+    check(st.mute == -1 && st.dial == -1, "state starts unknown");
+    razer_event_decode(muted, 16, &ev);
+    razer_state_apply(&st, &ev);
+    check(st.mute == 0 && st.dial == -1, "mute alone");
+    razer_event_decode(dial_top, 16, &ev);
+    razer_state_apply(&st, &ev);
+    razer_event_decode(unmuted, 16, &ev);
+    razer_state_apply(&st, &ev);
+    check(st.mute == 1 && st.dial == 0x64, "mute and dial, last one wins");
+    razer_event_decode(odd_type, 16, &ev); // an unknown report changes nothing
+    razer_state_apply(&st, &ev);
+    check(st.mute == 1 && st.dial == 0x64, "unknown report is ignored");
+
     uint8_t big[RAZER_REQUEST_ARGS_MAX + 1] = { 0 };
     check(razer_encode(frame, 0x52, 0, 0, big, RAZER_REQUEST_ARGS_MAX) == 0, "54 args fit");
     check(razer_encode(frame, 0x52, 0, 0, nullptr, RAZER_REQUEST_ARGS_MAX + 1) == RAZER_ERR_ARGS,
