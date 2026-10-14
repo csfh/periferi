@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 
 // Daemon side of "peri status" and "peri set": talk to the device an installed module drives.
@@ -20,6 +21,10 @@ void audio_handle(const char *args, char *reply, size_t size);
 // whole look with the settings it is given. apply sends the saved look's effect and brightness
 // to the device, and is the only one of the three that writes to it.
 void look_handle(const char *args, char *reply, size_t size);
+
+// The mic's mute state changed: apply the saved look for the new state, if following is on (the
+// default) and a look is saved for it. Called by the daemon after a quiet period, never by a request.
+void follow_mute_apply(const char *module_id, bool unmuted);
 
 // args: "<module-id> brightness=<0-255>". Asks for a live-only write (storage 0), capped by the
 // module's limits.max_brightness. The Seiren's stored value followed it anyway (verified

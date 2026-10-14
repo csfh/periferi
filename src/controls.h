@@ -28,3 +28,11 @@ void controls_detach(void);
 
 // The state for a module's device: unknown unless that module's device is attached.
 struct razer_state controls_state(const char *module_id);
+
+// Following the mute state (see follow.h). The reader notes every mute change as it reads it.
+// controls_follow_timeout() is how long perid may sleep before it has to look again (-1: no limit).
+// controls_follow_take() reports, once the quiet period is over, which look the new state calls for:
+// 0 for muted, 1 for unmuted (and the module's id), or -1 if nothing is due or the burst ended where
+// it began.
+long controls_follow_timeout(void);
+int controls_follow_take(char *module_id, size_t size);

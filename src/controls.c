@@ -7,8 +7,10 @@
 #include <poll.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
+#include "follow.h"
 #include "module.h"
 #include "razer_dev.h"
 #include "scan.h"
@@ -17,7 +19,15 @@ static struct {
     int fd;
     char module[49];
     struct razer_state state;
-} attached = { .fd = -1, .state = RAZER_STATE_UNKNOWN };
+    struct follow follow;
+} attached = { .fd = -1, .state = RAZER_STATE_UNKNOWN, .follow = FOLLOW_INIT };
+
+static long now_ms(void)
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (long)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+}
 
 int controls_fd(void)
 {
@@ -28,7 +38,7 @@ void controls_detach(void)
 {
     if (attached.fd >= 0)
         close(attached.fd);
-    attached = (typeof(attached)){ .fd = -1, .state = RAZER_STATE_UNKNOWN };
+    attached = (typeof(attached)){ .fd = -1, .state = RAZER_STATE_UNKNOWN, .follow = FOLLOW_INIT };
 }
 
 void controls_rescan(void)
@@ -60,6 +70,7 @@ void controls_rescan(void)
         attached.fd = fd;
         snprintf(attached.module, sizeof attached.module, "%s", mods[i].id);
         attached.state = RAZER_STATE_UNKNOWN;
+        attached.follow = FOLLOW_INIT;
         return;
     }
 }
@@ -85,8 +96,12 @@ void controls_service(short revents)
             return;
         }
         struct razer_event ev;
-        if (razer_event_decode(report, (size_t)n, &ev))
+        if (razer_event_decode(report, (size_t)n, &ev)) {
+            int was = attached.state.mute;
             razer_state_apply(&attached.state, &ev);
+            if (ev.kind == RAZER_EVENT_MUTE && attached.state.mute != was)
+                follow_event(&attached.follow, was, attached.state.mute, now_ms());
+        }
     }
 }
 
@@ -95,4 +110,20 @@ struct razer_state controls_state(const char *module_id)
     if (attached.fd >= 0 && strcmp(attached.module, module_id) == 0)
         return attached.state;
     return RAZER_STATE_UNKNOWN;
+}
+
+long controls_follow_timeout(void)
+{
+    return attached.fd >= 0 ? follow_timeout_ms(&attached.follow, now_ms()) : -1;
+}
+
+int controls_follow_take(char *module_id, size_t size)
+{
+    if (attached.fd < 0)
+        return -1;
+    int action = follow_due(&attached.follow, now_ms());
+    if (action != FOLLOW_MUTED && action != FOLLOW_UNMUTED)
+        return -1;
+    snprintf(module_id, size, "%s", attached.module);
+    return action;
 }

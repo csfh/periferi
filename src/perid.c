@@ -244,7 +244,13 @@ int main(void)
     while (!stop) {
         struct pollfd fds[2] = { { .fd = fd, .events = POLLIN },
                                  { .fd = controls_fd(), .events = POLLIN } };
-        int ready = poll(fds, 2, controls_fd() < 0 ? 3000 : -1);
+        // Wake for a client, for the mic, every few seconds to look for it while it is away, and
+        // when a mute change has waited out its quiet period.
+        int wait = controls_fd() < 0 ? 3000 : -1;
+        long follow_wait = controls_follow_timeout();
+        if (follow_wait >= 0 && (wait < 0 || follow_wait < wait))
+            wait = (int)follow_wait;
+        int ready = poll(fds, 2, wait);
         if (ready < 0) {
             if (errno == EINTR)
                 continue;
@@ -254,6 +260,11 @@ int main(void)
         if (controls_fd() >= 0 && fds[1].revents)
             controls_service(fds[1].revents);
         controls_rescan(); // no-op while attached
+
+        char followed[49];
+        int look = controls_follow_take(followed, sizeof followed);
+        if (look >= 0)
+            follow_mute_apply(followed, look == 1);
 
         if (!(fds[0].revents & POLLIN))
             continue;
