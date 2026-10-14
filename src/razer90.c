@@ -102,3 +102,33 @@ unsigned razer90_battery_percent(uint8_t raw)
 {
     return ((unsigned)raw * 100 + 127) / 255;
 }
+
+size_t razer90_dpi_set_args(unsigned x, unsigned y, uint8_t args[7])
+{
+    if (x < RAZER90_DPI_MIN || x > RAZER90_DPI_MAX || y < RAZER90_DPI_MIN || y > RAZER90_DPI_MAX)
+        return 0;
+    memset(args, 0, 7);
+    args[0] = 0x01;
+    args[1] = (uint8_t)(x >> 8);
+    args[2] = (uint8_t)x;
+    args[3] = (uint8_t)(y >> 8);
+    args[4] = (uint8_t)y;
+    return 7;
+}
+
+size_t razer90_poll_set_args(unsigned hz, uint8_t args[1])
+{
+    switch (hz) {
+    case 1000:
+        args[0] = 0x01;
+        return 1;
+    case 500:
+        args[0] = 0x02;
+        return 1;
+    case 125:
+        args[0] = 0x08;
+        return 1;
+    default:
+        return 0;
+    }
+}

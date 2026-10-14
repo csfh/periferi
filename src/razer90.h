@@ -86,3 +86,16 @@ bool razer90_poll_decode(const struct razer90_reply *reply, unsigned *hz);
 // doc comment above the public driver's battery attribute ("needs to be scaled from 0-255 ->
 // 0-100", razermouse_driver.c); the driver itself prints the raw byte. Not seen on this mouse.
 unsigned razer90_battery_percent(uint8_t raw);
+
+// The two writes, from the same public driver block. Pure builders: nothing here sends.
+//
+//   dpi set   class 04 cmd 05 size 7: argument 0 = 01 (the driver sends 01 whatever the caller
+//             asked: so a set may be kept in the mouse's own memory), x high/low, y high/low, 00 00
+//   poll set  class 00 cmd 05 size 1: argument 0 = 01 for 1000 Hz, 02 for 500, 08 for 125
+//
+// The driver clamps DPI to 100..45000 (the whole family) and sends 500 Hz for any rate it does not
+// know; these builders refuse instead. Returns the data size (7 or 1), or 0 when refused.
+#define RAZER90_DPI_MIN 100   // the driver's floor
+#define RAZER90_DPI_MAX 45000 // the driver's ceiling for the family: this sensor's own limit is lower
+size_t razer90_dpi_set_args(unsigned x, unsigned y, uint8_t args[7]);
+size_t razer90_poll_set_args(unsigned hz, uint8_t args[1]);

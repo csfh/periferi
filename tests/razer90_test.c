@@ -166,6 +166,28 @@ int main(void)
     r.len = 0;
     check(!razer90_poll_decode(&r, &hz), "poll reply too short");
 
+    // The writes: 800 dpi is 0x0320, 1600 is 0x0640, and the storage byte is always 01.
+    uint8_t wargs[7];
+    check(razer90_dpi_set_args(800, 1600, wargs) == 7 && wargs[0] == 0x01 && wargs[1] == 0x03
+              && wargs[2] == 0x20 && wargs[3] == 0x06 && wargs[4] == 0x40 && wargs[5] == 0
+              && wargs[6] == 0,
+          "dpi set arguments");
+    check(razer90_dpi_set_args(99, 800, wargs) == 0 && razer90_dpi_set_args(800, 45001, wargs) == 0
+              && razer90_dpi_set_args(100, 45000, wargs) == 7,
+          "dpi range is refused, not clamped");
+    // The request checksum covers the arguments: 07 ^ 04 ^ 05 ^ 01 ^ 03 ^ 20 ^ 06 ^ 40 = 6c...
+    razer90_dpi_set_args(800, 1600, wargs);
+    razer90_encode(frame, 0x1f, 0x04, 0x05, wargs, 7);
+    check(frame[88] == (uint8_t)(0x07 ^ 0x04 ^ 0x05 ^ 0x01 ^ 0x03 ^ 0x20 ^ 0x06 ^ 0x40),
+          "dpi set checksum");
+    uint8_t parg[1];
+    check(razer90_poll_set_args(1000, parg) == 1 && parg[0] == 0x01, "poll 1000");
+    check(razer90_poll_set_args(500, parg) == 1 && parg[0] == 0x02, "poll 500");
+    check(razer90_poll_set_args(125, parg) == 1 && parg[0] == 0x08, "poll 125");
+    check(razer90_poll_set_args(250, parg) == 0 && razer90_poll_set_args(8000, parg) == 0
+              && razer90_poll_set_args(0, parg) == 0,
+          "other poll rates are refused, not turned into 500");
+
     if (failures == 0)
         printf("razer90_test: all passed\n");
     return failures ? 1 : 0;

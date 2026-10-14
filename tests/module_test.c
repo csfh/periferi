@@ -244,7 +244,7 @@ int main(void)
     CHECK(peri_module_load(CATALOG_DIR "/razer-deathadder-v3-pro/module.toml", &m, err, sizeof err));
     CHECK(strcmp(m.id, "razer-deathadder-v3-pro") == 0 && strcmp(m.engine, "razer90") == 0);
     CHECK(m.vid == 0x1532 && m.pid == 0x00c3 && m.usage_page == 0x0001 && m.usage == 0x0002);
-    CHECK(!m.rgb && m.max_brightness == 0);
+    CHECK(!m.rgb && m.max_brightness == 0 && m.min_dpi == 100 && m.max_dpi == 30000);
 
     // Ids double as path components: only [a-z0-9-], not at the edges.
     CHECK(peri_module_id_valid("drop-ctrl-v2") && peri_module_id_valid("a"));
@@ -264,6 +264,11 @@ int main(void)
     CHECK(rejected_with("engine = \"xap\"", "engine = \"shell\"", "unknown engine"));
     CHECK(!rejected_with("engine = \"xap\"", "engine = \"razer90\"", "unknown engine"));
     CHECK(rejected_with("usage_page = 0xff51\n", "", "go together"));
+    CHECK(rejected_with("usage = 0x58\n", "usage = 0x58\n[limits]\nmin_dpi = 100\n", "go together"));
+    CHECK(rejected_with("usage = 0x58\n", "usage = 0x58\n[limits]\nmin_dpi = 900\nmax_dpi = 100\n",
+                        "not below min"));
+    CHECK(rejected_with("usage = 0x58\n", "usage = 0x58\n[limits]\nmin_dpi = 0\nmax_dpi = 100\n",
+                        "at least 1"));
     CHECK(rejected_with("vid = 0x1234", "vid = 0", "vid"));
     CHECK(rejected_with("vid = 0x1234", "vid = 0x10000", "vid"));
     CHECK(rejected_with("vid = 0x1234", "vid = -1", "vid"));

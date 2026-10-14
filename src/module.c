@@ -116,6 +116,19 @@ static bool parse_fields(toml_datum_t top, struct peri_module *m, char *err, siz
             return fail(err, err_size, "'limits.max_brightness' must be an integer from 1 to 255");
         m->max_brightness = (uint8_t)max.u.int64;
     }
+    toml_datum_t min_dpi = toml_seek(top, "limits.min_dpi");
+    toml_datum_t max_dpi = toml_seek(top, "limits.max_dpi");
+    if ((min_dpi.type == TOML_UNKNOWN) != (max_dpi.type == TOML_UNKNOWN))
+        return fail(err, err_size, "'limits.min_dpi' and 'limits.max_dpi' go together");
+    if (min_dpi.type != TOML_UNKNOWN) {
+        if (min_dpi.type != TOML_INT64 || max_dpi.type != TOML_INT64 || min_dpi.u.int64 < 1
+            || max_dpi.u.int64 > 65535 || min_dpi.u.int64 > max_dpi.u.int64)
+            return fail(err, err_size,
+                        "'limits.min_dpi' and 'limits.max_dpi' must be integers, min at least 1, "
+                        "max at most 65535 and not below min");
+        m->min_dpi = (uint16_t)min_dpi.u.int64;
+        m->max_dpi = (uint16_t)max_dpi.u.int64;
+    }
     return true;
 }
 

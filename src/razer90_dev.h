@@ -38,3 +38,9 @@ int razer90_battery(int fd, uint8_t *raw);       // raw 0-255, see razer90_batte
 int razer90_charging(int fd, bool *charging);
 int razer90_dpi(int fd, struct razer90_dpi *dpi);
 int razer90_poll_rate(int fd, unsigned *hz);     // 0 for a code that is not known
+
+// The writes. Each sends one frame and reads its reply; ok means the device said ok, which proves
+// nothing about the effect (the Seiren said ok to frames it ignored): read back and look. A DPI
+// set may be kept in the mouse's own memory (razer90.h), so never drive it from a slider drag.
+int razer90_set_dpi(int fd, unsigned x, unsigned y);
+int razer90_set_poll_rate(int fd, unsigned hz);

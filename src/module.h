@@ -16,6 +16,7 @@ struct peri_module {
     uint16_t usage_page, usage;
     bool rgb;          // capabilities.rgb
     uint8_t max_brightness; // limits.max_brightness (1-255), 0 if the module does not give one
+    uint16_t min_dpi, max_dpi; // limits.min_dpi and limits.max_dpi, both 0 if the module gives none
 };
 
 // Lowercase letters, digits and '-' (not at either end), 1-48 characters.

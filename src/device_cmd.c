@@ -79,7 +79,7 @@ static int open_razer(const struct peri_module *m, const char *node, char *reply
 {
     if (strcmp(m->engine, "razer") != 0) {
         err(reply, size,
-            strcmp(m->engine, "razer90") == 0 ? "this module can only be read for now (`peri status`)"
+            strcmp(m->engine, "razer90") == 0 ? "this is not a Seiren-style module (use `peri status` or `peri set dpi=`/`poll=`)"
                                               : "this module has nothing to read or set yet",
             m->id);
         return -1;
@@ -105,8 +105,10 @@ static void first_word(const char *args, char *out, size_t size)
     out[strcspn(out, " \n")] = '\0';
 }
 
-// The DeathAdder's status: what it says to the one read the daemon sends it, a firmware get.
-// The firmware bytes are shown raw: what they mean is not established.
+// The DeathAdder's status: firmware, battery, charging, DPI and poll rate, one read each. It stops
+// at the first read the mouse does not answer at all (a sleeping mouse takes about 1.5 s per
+// read, and the daemon serves one request at a time), and a read it answers with something other
+// than ok shows as "unknown". The firmware bytes are shown raw: what they mean is not established.
 static void status_razer90(const char *id, const char *node, char *reply, size_t size)
 {
     int fd = razer90_open(node);
@@ -114,14 +116,51 @@ static void status_razer90(const char *id, const char *node, char *reply, size_t
         err(reply, size, "cannot open the device (see `journalctl --user -u perid`)", id);
         return;
     }
-    uint8_t firmware[2];
-    bool ok = razer90_firmware(fd, firmware) == 0;
-    close(fd);
-    if (!ok) {
-        err(reply, size, "the device did not answer a read query", id);
+    uint8_t firmware[2], battery;
+    bool charging;
+    struct razer90_dpi dpi;
+    unsigned hz;
+
+    int rc = razer90_firmware(fd, firmware);
+    if (rc == RAZER_ERR_NO_REPLY || rc == RAZER_ERR_IO) {
+        close(fd);
+        err(reply, size, "the device did not answer (a sleeping mouse may need a click first)", id);
         return;
     }
-    snprintf(reply, size, "ok module=%s firmware=%02x%02x\n", id, firmware[0], firmware[1]);
+    char fw[8] = "unknown", bat[8] = "unknown", chg[8] = "unknown", dp[16] = "unknown", pr[8] = "unknown";
+    if (rc == 0)
+        snprintf(fw, sizeof fw, "%02x%02x", firmware[0], firmware[1]);
+
+    // Each later read is skipped once one has gone unanswered.
+    bool asleep = false;
+    rc = razer90_battery(fd, &battery);
+    asleep = rc == RAZER_ERR_NO_REPLY;
+    if (rc == 0)
+        snprintf(bat, sizeof bat, "%u", battery);
+    if (!asleep) {
+        rc = razer90_charging(fd, &charging);
+        asleep = rc == RAZER_ERR_NO_REPLY;
+        if (rc == 0)
+            snprintf(chg, sizeof chg, "%s", charging ? "yes" : "no");
+    }
+    if (!asleep) {
+        rc = razer90_dpi(fd, &dpi);
+        asleep = rc == RAZER_ERR_NO_REPLY;
+        if (rc == 0)
+            snprintf(dp, sizeof dp, "%u:%u", dpi.x, dpi.y);
+    }
+    if (!asleep) {
+        rc = razer90_poll_rate(fd, &hz);
+        if (rc == 0)
+        {
+            if (hz)
+                snprintf(pr, sizeof pr, "%u", hz);
+            // else it stays "unknown": a code this program does not know (a faster rate)
+        }
+    }
+    close(fd);
+    snprintf(reply, size, "ok module=%s firmware=%s battery=%s charging=%s dpi=%s poll=%s\n", id, fw,
+             bat, chg, dp, pr);
 }
 
 void status_handle(const char *args, char *reply, size_t size)
@@ -204,6 +243,112 @@ static bool effect_opts(const char *name, const char *color, const char *color2,
 // set <module-id> effect=<name> [color=<rrggbb>] [color2=<rrggbb>]
 // One kind of change per request. The device cannot be asked what its effect or colour is, so
 // the reply only says what was sent.
+// Is this installed module one for `engine`? Decided from the installed list alone, so the
+// request can be routed before any device is looked at.
+static bool installed_engine_is(const char *id, const char *engine)
+{
+    char dir[PATH_MAX];
+    struct peri_module installed[32];
+    size_t count = peri_installed_dir(dir, sizeof dir) ? peri_modules_scan(dir, installed, 32) : 0;
+    for (size_t i = 0; i < count; i++)
+        if (strcmp(installed[i].id, id) == 0)
+            return strcmp(installed[i].engine, engine) == 0;
+    return false;
+}
+
+// `set <module-id> dpi=<n>` or `poll=<125|500|1000>` for the DeathAdder: one setting per request.
+// The current value is read first and reported as "before", the value to put back, and no write
+// is made without it. The DPI set may be kept in the mouse's own memory (razer90.h). The device's
+// ok proves nothing about the effect, so the value is read back and reported as the device says.
+static void set_razer90(const char *id, char *rest, char *reply, size_t size)
+{
+    static const char usage[] = "err usage: set <module-id> dpi=<n> | poll=<125|500|1000>\n";
+    long dpi = -1, poll = -1;
+    for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
+        char *end;
+        if (strncmp(t, "dpi=", 4) == 0 && dpi < 0 && poll < 0) {
+            unsigned long v = strtoul(t + 4, &end, 10);
+            if (t[4] == '\0' || *end != '\0' || v > 65535) {
+                err(reply, size, "dpi must be a whole number", id);
+                return;
+            }
+            dpi = (long)v;
+        } else if (strncmp(t, "poll=", 5) == 0 && poll < 0 && dpi < 0) {
+            unsigned long v = strtoul(t + 5, &end, 10);
+            if (t[5] == '\0' || *end != '\0' || (v != 125 && v != 500 && v != 1000)) {
+                err(reply, size, "poll must be 125, 500 or 1000", id);
+                return;
+            }
+            poll = (long)v;
+        } else {
+            snprintf(reply, size, "%s", usage);
+            return;
+        }
+    }
+    if (dpi < 0 && poll < 0) {
+        snprintf(reply, size, "%s", usage);
+        return;
+    }
+
+    char node[32];
+    struct peri_module m;
+    if (!resolve_module(id, &m, node, sizeof node, reply, size))
+        return;
+    // The module must state a range, as it must state a brightness limit: no limit, no writes.
+    if (dpi >= 0 && (m.max_dpi == 0 || dpi < m.min_dpi || dpi > m.max_dpi)) {
+        err(reply, size, m.max_dpi ? "dpi is outside the module's range" : "the module sets no dpi range", id);
+        return;
+    }
+
+    int fd = razer90_open(node);
+    if (fd < 0) {
+        err(reply, size, "cannot open the device (see `journalctl --user -u perid`)", id);
+        return;
+    }
+    struct razer90_dpi before_dpi, after_dpi;
+    unsigned before_hz, after_hz;
+    bool have_before = dpi >= 0 ? razer90_dpi(fd, &before_dpi) == 0
+                                : razer90_poll_rate(fd, &before_hz) == 0;
+    if (!have_before) {
+        close(fd);
+        err(reply, size, "the current value could not be read, so nothing was written (no way to put it back)", id);
+        return;
+    }
+    // The value read must be one this request can put back: one DPI for both axes, and one of the
+    // three poll rates (a faster rate, such as the dongle's, is set with another command).
+    if ((dpi >= 0 && before_dpi.x != before_dpi.y) || (dpi < 0 && before_hz == 0)) {
+        close(fd);
+        err(reply, size, dpi >= 0 ? "the mouse has different x and y DPI, which this request cannot put back, so nothing was written"
+                                  : "the mouse's poll rate is not 125, 500 or 1000 Hz, which this request cannot put back, so nothing was written",
+            id);
+        return;
+    }
+    int rc = dpi >= 0 ? razer90_set_dpi(fd, (unsigned)dpi, (unsigned)dpi)
+                      : razer90_set_poll_rate(fd, (unsigned)poll);
+    bool read_back = rc == 0 && (dpi >= 0 ? razer90_dpi(fd, &after_dpi) == 0
+                                          : razer90_poll_rate(fd, &after_hz) == 0);
+    close(fd);
+    if (rc != 0) {
+        char why[96], text[160];
+        device_said(why, sizeof why, rc);
+        snprintf(text, sizeof text, "the change was not accepted: %s", why);
+        err(reply, size, text, id);
+        return;
+    }
+    if (dpi >= 0)
+        snprintf(reply, size, "ok module=%s sent=dpi:%ld before=%u:%u device=ok", m.id, dpi,
+                 before_dpi.x, before_dpi.y);
+    else
+        snprintf(reply, size, "ok module=%s sent=poll:%ld before=%u device=ok", m.id, poll, before_hz);
+    size_t used = strlen(reply);
+    if (!read_back)
+        snprintf(reply + used, size - used, " readback=unavailable stored=maybe\n");
+    else if (dpi >= 0)
+        snprintf(reply + used, size - used, " readback=%u:%u stored=maybe\n", after_dpi.x, after_dpi.y);
+    else
+        snprintf(reply + used, size - used, " readback=%u stored=maybe\n", after_hz);
+}
+
 void set_handle(const char *args, char *reply, size_t size)
 {
     static const char usage[] = "err usage: set <module-id> brightness=<0-255> | effect=<name> "
@@ -213,6 +358,11 @@ void set_handle(const char *args, char *reply, size_t size)
     const char *id = strtok_r(line, " \n", &rest);
     if (!id) {
         snprintf(reply, size, "%s", usage);
+        return;
+    }
+
+    if (installed_engine_is(id, "razer90")) {
+        set_razer90(id, rest, reply, size);
         return;
     }
 

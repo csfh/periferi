@@ -143,3 +143,21 @@ int razer90_poll_rate(int fd, unsigned *hz)
         rc = RAZER_ERR_STATUS;
     return rc;
 }
+
+int razer90_set_dpi(int fd, unsigned x, unsigned y)
+{
+    uint8_t args[7];
+    if (razer90_dpi_set_args(x, y, args) == 0)
+        return RAZER_ERR_ARGS;
+    struct razer90_reply reply;
+    return query(fd, 0x04, 0x05, 7, args, 0, &reply);
+}
+
+int razer90_set_poll_rate(int fd, unsigned hz)
+{
+    uint8_t args[1];
+    if (razer90_poll_set_args(hz, args) == 0)
+        return RAZER_ERR_ARGS;
+    struct razer90_reply reply;
+    return query(fd, 0x00, 0x05, 1, args, 0, &reply);
+}

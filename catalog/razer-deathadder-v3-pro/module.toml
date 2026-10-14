@@ -5,9 +5,10 @@
 # so it may be the receiver. The vendor feature report sits inside the mouse's own collection,
 # so the usage to match is the plain mouse one (0001:0002), not a vendor page.
 #
-# No capabilities and no limits: the daemon reads this device only for `peri status` (firmware),
-# and refuses it for everything else, so nothing in the panel drives the device yet. The CLI can
-# also read the firmware by hand (`peri razer90 <node> firmware`).
+# No capabilities (no lighting is known for this model). The daemon reads it for `peri status`
+# (firmware, battery, charging, DPI, poll rate) and writes only `peri set <id> dpi=<n>` and
+# `poll=<125|500|1000>`, within the limits below; the panel has a pane for it. The CLI can also
+# send single reads by hand (`peri razer90 <node> firmware|battery|charging|dpi|poll-rate`).
 
 schema = 1
 id = "razer-deathadder-v3-pro"
@@ -20,3 +21,10 @@ vid = 0x1532
 pid = 0x00c3
 usage_page = 0x0001
 usage = 0x0002
+
+[limits]
+# The DPI range the daemon enforces on every write. The ceiling is the sensor's rated 30,000 DPI
+# (Razer's product page for the DeathAdder V3 Pro, Focus Pro 30K optical sensor). The floor is the
+# 100 the public OpenRazer driver clamps to. Neither was read from the mouse.
+min_dpi = 100
+max_dpi = 30000
