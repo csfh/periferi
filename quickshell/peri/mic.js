@@ -133,3 +133,56 @@ function applyText(which) {
   return "Sends the " + lookLabel(which).toLowerCase() + " to the microphone now, "
     + "whatever its mute state."
 }
+
+// --- audio: the microphone's standard USB audio controls (`peri audio`) -----------------------
+// Levels are 0-100 over each control's own range. They are live settings of the sound card, not
+// stored by peri, so unlike a look they are applied as soon as a slider is released.
+
+function emptyAudio() { return { gain: -1, monitor: -1, monitorOn: null, headphones: -1 } }
+
+function level(text) {
+  return /^\d+$/.test(text || "") && Number(text) <= 100 ? Number(text) : -1
+}
+
+// `peri audio <module> get|set` prints "key   value" lines. null if that is not an audio answer
+// (a refusal, or nothing); a field the card did not report is -1 (or null for the switch).
+function parseAudio(text) {
+  var v = L.parseValues(text)
+  if (!v.module) return null
+  return {
+    gain: level(v.gain),
+    monitor: level(v.monitor),
+    monitorOn: v.monitor_on === "yes" ? true : v.monitor_on === "no" ? false : null,
+    headphones: level(v.headphones)
+  }
+}
+
+var audioKeys = ["gain", "monitor", "monitor_on", "headphones"]
+
+// A released slider or a pressed button: the "key=value" setting for `peri audio set`, or null
+// when it would change nothing (a release that did not move the value is not sent) or the key or
+// value is not one the daemon takes. `current` is what parseAudio last returned.
+function audioSetting(key, value, current) {
+  if (audioKeys.indexOf(key) < 0) return null
+  if (key === "monitor_on") {
+    if (typeof value !== "boolean") return null
+    return current && current.monitorOn === value ? null : "monitor_on=" + (value ? "yes" : "no")
+  }
+  var n = Math.round(Number(value))
+  if (!isFinite(n)) n = 0
+  n = Math.max(0, Math.min(100, n))
+  var field = key === "gain" ? "gain" : key === "monitor" ? "monitor" : "headphones"
+  return current && current[field] === n ? null : key + "=" + n
+}
+
+// The audio state after a gesture, for showing it at once (the daemon's answer confirms it). Same
+// rounding and clamping as audioSetting(). A key that is not an audio key leaves it as it is.
+function withAudio(current, key, value) {
+  var a = { gain: -1, monitor: -1, monitorOn: null, headphones: -1 }
+  if (current) a = { gain: current.gain, monitor: current.monitor, monitorOn: current.monitorOn, headphones: current.headphones }
+  if (key === "monitor_on" && typeof value === "boolean") { a.monitorOn = value; return a }
+  if (key !== "gain" && key !== "monitor" && key !== "headphones") return a
+  var n = Math.round(Number(value))
+  a[key] = Math.max(0, Math.min(100, isFinite(n) ? n : 0))
+  return a
+}

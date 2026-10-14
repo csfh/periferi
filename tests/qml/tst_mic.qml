@@ -144,4 +144,56 @@ TestCase {
     compare(Mic.looks.map(function(l) { return l.id }), ["unmuted", "muted"])
     Mic.effects.forEach(function(e) { verify(Mic.withEffect(look("", "", -1), e.id, "0000ff") !== null, e.id) })
   }
+
+  // --- audio ---------------------------------------------------------------------------------
+  readonly property string audioText: "module   razer-seiren-v3-chroma\ngain     65\nmonitor  86\nmonitor_on no\nheadphones 77\n"
+
+  function test_parse_audio() {
+    compare(Mic.parseAudio(audioText), { gain: 65, monitor: 86, monitorOn: false, headphones: 77 })
+    compare(Mic.parseAudio("module m\ngain 0\nmonitor 100\nmonitor_on yes\nheadphones 5\n"),
+            { gain: 0, monitor: 100, monitorOn: true, headphones: 5 })
+    // A control the card did not report is unknown, not zero.
+    compare(Mic.parseAudio("module m\ngain unknown\nmonitor_on unknown\n"),
+            { gain: -1, monitor: -1, monitorOn: null, headphones: -1 })
+    compare(Mic.parseAudio("module m\ngain 101\nheadphones -3\n").gain, -1)
+    compare(Mic.parseAudio(""), null)
+    compare(Mic.parseAudio("razer-seiren-v3-chroma: the sound card is not connected\n"), null)
+    compare(Mic.parseAudio(undefined), null)
+  }
+
+  function test_audio_setting() {
+    var cur = { gain: 65, monitor: 86, monitorOn: false, headphones: 77 }
+    compare(Mic.audioSetting("gain", 40, cur), "gain=40")
+    compare(Mic.audioSetting("monitor", 0, cur), "monitor=0")
+    compare(Mic.audioSetting("headphones", 99.6, cur), "headphones=100")   // rounded
+    compare(Mic.audioSetting("gain", 150, cur), "gain=100")                // clamped
+    compare(Mic.audioSetting("gain", -4, cur), "gain=0")
+    compare(Mic.audioSetting("gain", "junk", cur), "gain=0")
+    compare(Mic.audioSetting("monitor_on", true, cur), "monitor_on=yes")
+    compare(Mic.audioSetting("gain", 40, null), "gain=40")                 // nothing known yet
+  }
+
+  // A release that does not move the value sends nothing, and only the daemon's keys are built.
+  function test_audio_setting_refusals() {
+    var cur = { gain: 65, monitor: 86, monitorOn: false, headphones: 77 }
+    compare(Mic.audioSetting("gain", 65, cur), null)
+    compare(Mic.audioSetting("gain", 64.6, cur), null)
+    compare(Mic.audioSetting("monitor_on", false, cur), null)
+    compare(Mic.audioSetting("monitor_on", "yes", cur), null)              // must be a boolean
+    compare(Mic.audioSetting("brightness", 10, cur), null)
+    compare(Mic.audioSetting("", 10, cur), null)
+    compare(Mic.audioSetting("gain; rm", 10, cur), null)
+  }
+
+  function test_with_audio() {
+    var cur = { gain: 65, monitor: 86, monitorOn: false, headphones: 77 }
+    compare(Mic.withAudio(cur, "gain", 40.4), { gain: 40, monitor: 86, monitorOn: false, headphones: 77 })
+    compare(Mic.withAudio(cur, "monitor_on", true), { gain: 65, monitor: 86, monitorOn: true, headphones: 77 })
+    compare(Mic.withAudio(cur, "headphones", 500).headphones, 100)
+    compare(Mic.withAudio(cur, "other", 1), cur)
+    compare(Mic.withAudio(cur, "monitor_on", "yes"), cur)
+    compare(cur.gain, 65)                                   // the input is never changed
+    compare(Mic.withAudio(null, "gain", 5).gain, 5)
+    compare(Mic.withAudio(null, "gain", 5).monitorOn, null)
+  }
 }

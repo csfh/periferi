@@ -34,7 +34,10 @@ Scope {
                                    && !saver.running && state.pending === null
   readonly property bool busy: applier.running
   readonly property string notice: state.notice  // what the last apply sent, or ""
-  readonly property string error: state.error
+  readonly property string error: state.error !== "" ? state.error : state.audioError
+  // The sound-card controls (`peri audio`): { gain, monitor, monitorOn, headphones }, -1 or null
+  // when unknown. Live levels, applied as soon as chooseAudio() is called.
+  readonly property var audio: state.audio
 
   // Read the mic's online state and brightness, and both saved looks. Skipped while an apply is
   // running. Nothing here writes to the mic.
@@ -44,6 +47,7 @@ Scope {
     if (!status.running) status.running = true
     if (!getUnmuted.running) getUnmuted.running = true
     if (!getMuted.running) getMuted.running = true
+    if (!audioGet.running) audioGet.running = true
   }
 
   function selectLook(which) {
@@ -60,6 +64,30 @@ Scope {
   function chooseBrightness(percent) {
     var next = M.withBrightness(root.look, percent)
     if (next !== null) saveLook(root.editing, next)
+  }
+
+  // A released audio slider or the monitor button: key is "gain", "monitor", "headphones" or
+  // "monitor_on" (a boolean). These are live sound-card levels, not looks, so they apply at
+  // once; a value that would change nothing is not sent, and several quick ones go out together.
+  function chooseAudio(key, value) {
+    var setting = M.audioSetting(key, value, state.audio)
+    if (setting === null || root.moduleId === "") return
+    state.audio = M.withAudio(state.audio, key, value) // shown at once
+    state.audioError = ""
+    var pending = state.pendingAudio
+    pending[key] = setting
+    state.pendingAudio = pending
+    if (!audioSetter.running) sendAudio()
+  }
+
+  function sendAudio() {
+    var pending = state.pendingAudio
+    var keys = Object.keys(pending)
+    if (keys.length === 0) return
+    state.pendingAudio = {}
+    audioSetter.command = Cli.command(root.periPath, ["audio", root.moduleId, "set"]
+      .concat(keys.map(function(k) { return pending[k] })))
+    audioSetter.running = true
   }
 
   // Send the look being edited to the mic. The only call here that does.
@@ -98,6 +126,9 @@ Scope {
     property int deviceBrightness: 0
     property var looks: ({ unmuted: M.emptyLook(), muted: M.emptyLook() })
     property var pending: null      // the newest save waiting for the one in flight: last one wins
+    property var audio: M.emptyAudio()
+    property var pendingAudio: ({})   // key -> "key=value", waiting for the one in flight
+    property string audioError: ""
     property string notice: ""
     property string error: ""
     property string errText: ""
@@ -188,6 +219,42 @@ Scope {
         state.error = state.errText || "the microphone did not accept the look"
       }
       if (!status.running) status.running = true // read the brightness it holds now
+    }
+  }
+
+  // The sound card's controls. A failed read means the card is not there: everything unknown.
+  Process {
+    id: audioGet
+    command: Cli.command(root.periPath, ["audio", root.moduleId, "get"])
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var a = M.parseAudio(this.text)
+        if (audioSetter.running || Object.keys(state.pendingAudio).length > 0) return
+        state.audio = a !== null ? a : M.emptyAudio()
+      }
+    }
+  }
+
+  // `peri audio set` answers with the controls as the sound card now holds them.
+  Process {
+    id: audioSetter
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var a = M.parseAudio(this.text)
+        if (a !== null && Object.keys(state.pendingAudio).length === 0) state.audio = a
+      }
+    }
+    stderr: StdioCollector {
+      onStreamFinished: state.errText = this.text.trim()
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        state.audioError = state.errText || "the sound card did not accept the change"
+        state.pendingAudio = {}
+        if (!audioGet.running) audioGet.running = true
+      } else if (Object.keys(state.pendingAudio).length > 0) {
+        root.sendAudio()
+      }
     }
   }
 }

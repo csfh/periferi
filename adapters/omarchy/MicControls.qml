@@ -173,6 +173,78 @@ Column {
     }
   }
 
+  // --- audio: live sound-card levels, applied as soon as a slider is let go ------------------
+  Label { text: "Audio" }
+  Row {
+    id: audioRow
+    width: parent.width
+    spacing: Style.space(24)
+    readonly property real colWidth: (width - spacing * 2) / 3
+
+    Column {
+      width: audioRow.colWidth
+      spacing: Style.space(6)
+      Label { text: "Gain  " + (root.peri.audio.gain >= 0 ? root.peri.audio.gain + "%" : "unknown") }
+      PanelSlider {
+        width: parent.width
+        bar: root.bar
+        minimum: 0
+        maximum: 100
+        step: 1
+        integer: true
+        enabled: root.peri.audio.gain >= 0
+        opacity: enabled ? 1 : 0.4
+        value: Math.max(0, root.peri.audio.gain)
+        onReleased: function(v) { root.peri.chooseAudio("gain", v) }
+      }
+    }
+    Column {
+      width: audioRow.colWidth
+      spacing: Style.space(6)
+      Label { text: "Monitor mix  " + (root.peri.audio.monitor >= 0 ? root.peri.audio.monitor + "%" : "unknown") }
+      PanelSlider {
+        width: parent.width
+        bar: root.bar
+        minimum: 0
+        maximum: 100
+        step: 1
+        integer: true
+        enabled: root.peri.audio.monitor >= 0
+        opacity: enabled ? 1 : 0.4
+        value: Math.max(0, root.peri.audio.monitor)
+        onReleased: function(v) { root.peri.chooseAudio("monitor", v) }
+      }
+      Button {
+        bordered: true
+        enabled: root.peri.audio.monitorOn !== null
+        selected: root.peri.audio.monitorOn === true
+        text: root.peri.audio.monitorOn === true ? "Monitor on" : "Monitor off"
+        onClicked: root.peri.chooseAudio("monitor_on", root.peri.audio.monitorOn !== true)
+      }
+    }
+    Column {
+      width: audioRow.colWidth
+      spacing: Style.space(6)
+      Label { text: "Headphones  " + (root.peri.audio.headphones >= 0 ? root.peri.audio.headphones + "%" : "unknown") }
+      PanelSlider {
+        width: parent.width
+        bar: root.bar
+        minimum: 0
+        maximum: 100
+        step: 1
+        integer: true
+        enabled: root.peri.audio.headphones >= 0
+        opacity: enabled ? 1 : 0.4
+        value: Math.max(0, root.peri.audio.headphones)
+        onReleased: function(v) { root.peri.chooseAudio("headphones", v) }
+      }
+    }
+  }
+  Caption {
+    text: "These are the sound card's own levels. They apply as soon as you let go of a slider. "
+      + "The dial on the microphone has its own setting, and how it relates to these is not known."
+  }
+
   Caption {
     visible: root.peri.notice !== ""
     text: root.peri.notice
