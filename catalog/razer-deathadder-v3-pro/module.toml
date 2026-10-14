@@ -1,0 +1,22 @@
+# peri module: Razer DeathAdder V3 Pro mouse, over Razer's long vendor frame (the "razer90"
+# engine). The file format is described in catalog/drop-ctrl-v2/module.toml.
+#
+# 1532:00c3 is OpenRazer's name for the wireless identity of this mouse (the wired one is 00c2),
+# so it may be the receiver. The vendor feature report sits inside the mouse's own collection,
+# so the usage to match is the plain mouse one (0001:0002), not a vendor page.
+#
+# No capabilities and no limits: the firmware can be read by hand with the CLI
+# (`peri razer90 <node> firmware`), and the daemon refuses this engine everywhere else, so
+# nothing in the panel or the daemon drives the device yet.
+
+schema = 1
+id = "razer-deathadder-v3-pro"
+name = "Razer DeathAdder V3 Pro"
+version = "0.1.0"
+engine = "razer90"
+
+[match]
+vid = 0x1532
+pid = 0x00c3
+usage_page = 0x0001
+usage = 0x0002

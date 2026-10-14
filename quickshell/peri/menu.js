@@ -35,7 +35,7 @@ function needsSetup(module) {
   return !!module && module.access === "setup"
 }
 
-// The protocol engine of a module from `peri modules --json` ("xap", "razer"), "" if unknown.
+// The protocol engine of a module from `peri modules --json` ("xap", "razer", "razer90"), "" if unknown.
 function engineOf(module) {
   return module && module.engine ? module.engine : ""
 }

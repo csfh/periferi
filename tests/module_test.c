@@ -239,6 +239,13 @@ int main(void)
     CHECK(m.vid == 0x1532 && m.pid == 0x056f && m.usage_page == 0xff53 && m.usage == 0x04);
     CHECK(!m.rgb && m.max_brightness == 255); // the protocol's range, see the module file
 
+    // The DeathAdder's module uses a third engine, "razer90", and matches the plain mouse usage:
+    // its control item is inside the mouse collection, not on a vendor page.
+    CHECK(peri_module_load(CATALOG_DIR "/razer-deathadder-v3-pro/module.toml", &m, err, sizeof err));
+    CHECK(strcmp(m.id, "razer-deathadder-v3-pro") == 0 && strcmp(m.engine, "razer90") == 0);
+    CHECK(m.vid == 0x1532 && m.pid == 0x00c3 && m.usage_page == 0x0001 && m.usage == 0x0002);
+    CHECK(!m.rgb && m.max_brightness == 0);
+
     // Ids double as path components: only [a-z0-9-], not at the edges.
     CHECK(peri_module_id_valid("drop-ctrl-v2") && peri_module_id_valid("a"));
     CHECK(!peri_module_id_valid("") && !peri_module_id_valid("-a") && !peri_module_id_valid("a-"));
@@ -255,6 +262,7 @@ int main(void)
     CHECK(rejected_with("\"my-mod\"", "5", "must be a string"));
     CHECK(rejected_with("\"My mod\"", "\"\"", "'name'"));
     CHECK(rejected_with("engine = \"xap\"", "engine = \"shell\"", "unknown engine"));
+    CHECK(!rejected_with("engine = \"xap\"", "engine = \"razer90\"", "unknown engine"));
     CHECK(rejected_with("usage_page = 0xff51\n", "", "go together"));
     CHECK(rejected_with("vid = 0x1234", "vid = 0", "vid"));
     CHECK(rejected_with("vid = 0x1234", "vid = 0x10000", "vid"));

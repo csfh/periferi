@@ -46,6 +46,7 @@ TestCase {
     compare(Menu.drivesKeyboard({ engine: "xap" }), true)
     compare(Menu.drivesKeyboard({ engine: "" }), true)
     compare(Menu.drivesKeyboard({ engine: "razer" }), false)
+    compare(Menu.drivesKeyboard({ engine: "razer90" }), false)
     compare(Menu.drivesKeyboard({ engine: "something-new" }), false)
     compare(Menu.drivesKeyboard(null), false)
     // A device whose module is missing from the list has engine "".

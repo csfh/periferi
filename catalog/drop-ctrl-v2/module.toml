@@ -2,7 +2,7 @@
 #
 # schema        module file format version (this file is 1)
 # id            lowercase letters, digits and '-'; must equal the directory name
-# engine        built-in protocol engine that does the talking ("xap")
+# engine        built-in protocol engine that does the talking ("xap", "razer" or "razer90")
 # [match]       which HID interface this module drives. vid and pid are required;
 #               usage_page and usage pick the one interface of the device
 # [capabilities] what the module can do, for the UI and the daemon
