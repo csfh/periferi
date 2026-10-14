@@ -3,6 +3,7 @@
 
 #include "device_cmd.h"
 
+#include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -92,21 +93,88 @@ void status_handle(const char *args, char *reply, size_t size)
              firmware[1], brightness);
 }
 
+// "0000ff" -> {0x00, 0x00, 0xff}. Exactly six hex digits.
+static bool parse_color(const char *s, uint8_t rgb[3])
+{
+    if (strlen(s) != 6)
+        return false;
+    for (int i = 0; i < 6; i++)
+        if (!isxdigit((unsigned char)s[i]))
+            return false;
+    for (int i = 0; i < 3; i++) {
+        char pair[3] = { s[2 * i], s[2 * i + 1], '\0' };
+        rgb[i] = (uint8_t)strtoul(pair, nullptr, 16);
+    }
+    return true;
+}
+
+static int effect_id(const char *name)
+{
+    static const struct { const char *name; int id; } effects[] = {
+        { "none", RAZER_EFFECT_NONE }, { "static", RAZER_EFFECT_STATIC },
+        { "breathing", RAZER_EFFECT_BREATHING }, { "spectrum", RAZER_EFFECT_SPECTRUM },
+    };
+    for (size_t i = 0; i < sizeof effects / sizeof *effects; i++)
+        if (strcmp(effects[i].name, name) == 0)
+            return effects[i].id;
+    return -1;
+}
+
+// set <module-id> brightness=<0-255>
+// set <module-id> effect=<none|static|breathing|spectrum> [color=<rrggbb>]
+// One kind of change per request. The device cannot be asked what its effect or colour is, so
+// the reply only says what was sent.
 void set_handle(const char *args, char *reply, size_t size)
 {
+    static const char usage[] = "err usage: set <module-id> brightness=<0-255> | "
+                                "effect=<none|static|breathing|spectrum> [color=<rrggbb>]\n";
     char line[128], *rest;
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
-    const char *setting = strtok_r(nullptr, " \n", &rest);
-    if (!id || !setting || strtok_r(nullptr, " \n", &rest)
-        || strncmp(setting, "brightness=", 11) != 0) {
-        snprintf(reply, size, "err usage: set <module-id> brightness=<0-255>\n");
+    if (!id) {
+        snprintf(reply, size, "%s", usage);
         return;
     }
-    char *end;
-    unsigned long value = strtoul(setting + 11, &end, 10);
-    if (setting[11] == '\0' || *end != '\0' || value > 255) {
-        err(reply, size, "brightness must be a whole number from 0 to 255", id);
+
+    long brightness = -1, effect = -1;
+    const char *effect_name = "";
+    uint8_t rgb[3];
+    bool has_color = false;
+    for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
+        if (strncmp(t, "brightness=", 11) == 0 && brightness < 0) {
+            char *end;
+            unsigned long v = strtoul(t + 11, &end, 10);
+            if (t[11] == '\0' || *end != '\0' || v > 255) {
+                err(reply, size, "brightness must be a whole number from 0 to 255", id);
+                return;
+            }
+            brightness = (long)v;
+        } else if (strncmp(t, "effect=", 7) == 0 && effect < 0) {
+            effect = effect_id(t + 7);
+            effect_name = t + 7;
+            if (effect < 0) {
+                err(reply, size, "effect must be none, static, breathing or spectrum", id);
+                return;
+            }
+        } else if (strncmp(t, "color=", 6) == 0 && !has_color) {
+            if (!parse_color(t + 6, rgb)) {
+                err(reply, size, "color must be six hex digits, like 0000ff", id);
+                return;
+            }
+            has_color = true;
+        } else {
+            snprintf(reply, size, "%s", usage);
+            return;
+        }
+    }
+    bool bright_set = brightness >= 0, effect_set = effect >= 0;
+    if (bright_set == effect_set || (bright_set && has_color) || (has_color && !effect_set)) {
+        snprintf(reply, size, "%s", usage);
+        return;
+    }
+    if (effect_set && razer_effect_args(0, (uint8_t)effect, has_color ? rgb : nullptr,
+                                        (uint8_t[RAZER_EFFECT_ARGS_MAX]){}) == 0) {
+        err(reply, size, "this effect needs a color=<rrggbb>", id);
         return;
     }
 
@@ -114,8 +182,21 @@ void set_handle(const char *args, char *reply, size_t size)
     int fd = open_module_device(id, &m, reply, size);
     if (fd < 0)
         return;
+
+    if (effect_set) {
+        int rc = razer_set_effect(fd, RAZER_STORE_NONE, (uint8_t)effect, has_color ? rgb : nullptr);
+        close(fd);
+        if (rc != 0) {
+            err(reply, size, "the device did not accept the effect", id);
+            return;
+        }
+        snprintf(reply, size, "ok module=%s sent=%s color=%s storage=none readback=unavailable\n",
+                 m.id, effect_name, has_color ? "yes" : "no");
+        return;
+    }
+
     // The module must state a limit, as for the keyboard: no limit, no brightness writes.
-    if (m.max_brightness == 0 || value > m.max_brightness) {
+    if (m.max_brightness == 0 || brightness > m.max_brightness) {
         close(fd);
         err(reply, size, m.max_brightness ? "brightness is above the module's limit"
                                           : "the module sets no brightness limit", id);
@@ -123,7 +204,7 @@ void set_handle(const char *args, char *reply, size_t size)
     }
 
     uint8_t now;
-    bool ok = razer_set_brightness(fd, RAZER_STORE_NONE, (uint8_t)value) == 0
+    bool ok = razer_set_brightness(fd, RAZER_STORE_NONE, (uint8_t)brightness) == 0
               && razer_brightness(fd, RAZER_STORE_NONE, &now) == 0;
     close(fd);
     if (!ok) {

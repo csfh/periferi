@@ -906,16 +906,24 @@ static int cmd_status(const char *id)
     return forward(req);
 }
 
-// peri set <module-id> brightness=<0-255>: change the running brightness of a module's device.
-// Asks for a live-only write, but on the Seiren the stored value follows it: each set may wear
-// the device's memory, so do not drive this from a slider drag.
-static int cmd_set(const char *id, const char *setting)
+// peri set <module-id> brightness=<0-255>
+// peri set <module-id> effect=<none|static|breathing|spectrum> [color=<rrggbb>]
+// The daemon checks every setting. A set may be kept in the device's memory (the Seiren's stored
+// brightness followed a "live only" set), so do not drive this from a slider drag.
+static int cmd_set(int argc, char **argv)
 {
-    char req[128];
-    if (snprintf(req, sizeof req, "set %s %s\n", id, setting) >= (int)sizeof req) {
-        fprintf(stderr, "peri: request too long\n");
-        return 2;
+    char req[128] = "set";
+    size_t len = strlen(req);
+    for (int i = 2; i < argc; i++) {
+        int n = snprintf(req + len, sizeof req - len, " %s", argv[i]);
+        if (n < 0 || (size_t)n >= sizeof req - len - 2) {
+            fprintf(stderr, "peri: request too long\n");
+            return 2;
+        }
+        len += (size_t)n;
     }
+    req[len] = '\n';
+    req[len + 1] = '\0';
     return forward(req);
 }
 
@@ -953,9 +961,9 @@ int main(int argc, char **argv)
         return cmd_rgb(argc, argv);
     if (argc == 3 && strcmp(argv[1], "status") == 0)
         return cmd_status(argv[2]);
-    if (argc == 4 && strcmp(argv[1], "set") == 0)
-        return cmd_set(argv[2], argv[3]);
+    if (argc >= 4 && argc <= 5 && strcmp(argv[1], "set") == 0)
+        return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|set <module-id> brightness=<0-255>|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
