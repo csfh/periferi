@@ -17,6 +17,7 @@ Column {
   required property var peri
   property QtObject bar: null
   property string moduleId: ""   // the installed module that drives this mic
+  property bool active: true     // the panel is open: only then is the mic read every 2 s
 
   spacing: Style.space(10)
 
@@ -24,7 +25,7 @@ Column {
   Binding { target: root.peri; property: "moduleId"; value: root.moduleId }
   Timer {
     interval: 2000
-    running: root.visible && root.moduleId !== ""
+    running: root.active && root.visible && root.moduleId !== ""
     repeat: true
     triggeredOnStart: true
     onTriggered: root.peri.refresh()

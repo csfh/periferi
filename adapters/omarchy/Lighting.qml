@@ -67,6 +67,7 @@ Panel {
         anchors.top: parent.top
         light: lightingState
         mic: micState
+        open: root.opened
         devs: devicesState
         bar: root.bar
       }

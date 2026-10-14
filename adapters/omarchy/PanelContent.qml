@@ -14,6 +14,7 @@ Item {
   required property var mic
   required property var devs
   property QtObject bar: null
+  property bool open: true          // whether the panel is showing; the mic is only polled while it is
 
   property string selectedKey: ""   // the managed device shown on the right
   property bool availableOpen: false
@@ -273,6 +274,7 @@ Item {
                && content.selected.engine === "razer"
       width: parent.width
       peri: content.mic
+      active: content.open
       bar: content.bar
       moduleId: content.selected && content.selected.engine === "razer" ? content.selected.module : ""
     }
