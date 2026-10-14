@@ -3,33 +3,33 @@ import qs.Commons
 import qs.Ui
 import "peri/mic.js" as Mic
 
-// The microphone's controls, in Omarchy's look: what its own controls last reported (mute, dial),
-// brightness, colour swatches and effect buttons. No logic of its own: values come from, and
-// changes go to, the generic core (PeriMic, passed in as `peri`) and mic.js, which are tested.
+// The microphone's controls, in Omarchy's look. The pane edits two saved looks, Unmuted and Muted:
+// a switch picks the look, and the colour, effect and brightness controls change that look's saved
+// settings. No logic of its own: values come from, and changes go to, the generic core (PeriMic,
+// passed in as `peri`) and mic.js, which are tested.
 //
 // Two rules are built into how this is wired:
-//   - The slider is connected to `onReleased` only, never `onMoved`, and nothing is bound to a
-//     write. A refresh that changes `value` cannot send anything.
-//   - The highlighted effect button and colour swatch are what peri last SENT the microphone,
-//     from the daemon's record: the microphone cannot report its effect or colour, so this is
-//     not what it is showing, and a change made any other way does not appear.
+//   - Editing only SAVES. The slider is connected to `onReleased` only (never `onMoved`, which a
+//     scrolled wheel would repeat), and nothing here reaches the microphone except the Apply
+//     button, because a write to the microphone may be kept in its own memory.
+//   - The highlights are the settings saved in the look being edited. The microphone cannot report
+//     its effect or colour, so they are not what it is showing, and the pane does not follow its
+//     mute state: Apply sends the chosen look whatever that state is.
 Column {
   id: root
 
   required property var peri
   property QtObject bar: null
   property string moduleId: ""   // the installed module that drives this mic
-  property bool active: true     // the panel is open: only then is the mic read every 2 s
+  property bool active: true     // the panel is open: the microphone is read when that becomes true
 
   spacing: Style.space(10)
 
-  // Keep the core pointed at this mic and follow its own controls while the pane is shown.
+  // Keep the core pointed at this mic, and read it once whenever the pane opens.
   Binding { target: root.peri; property: "moduleId"; value: root.moduleId }
   Timer {
-    interval: 2000
+    interval: 1
     running: root.active && root.visible && root.moduleId !== ""
-    repeat: true
-    triggeredOnStart: true
     onTriggered: root.peri.refresh()
   }
 
@@ -49,25 +49,44 @@ Column {
 
   Caption {
     visible: !root.peri.online
-    text: "The microphone is not answering. Is it plugged in and is the peri daemon running?"
+    text: "The microphone is not answering. Is it plugged in and is the peri daemon running? "
+      + "You can still edit the saved looks."
+  }
+
+  // --- which look is being edited -----------------------------------------------------------
+  Row {
+    id: lookRow
+    width: parent.width
+    spacing: Style.space(6)
+    Repeater {
+      model: Mic.looks
+      delegate: Button {
+        required property var modelData
+        width: (lookRow.width - lookRow.spacing) / 2
+        selected: root.peri.editing === modelData.id
+        text: modelData.label
+        onClicked: root.peri.selectLook(modelData.id)
+      }
+    }
   }
 
   Row {
     id: body
-    visible: root.peri.online
     width: parent.width
     spacing: Style.space(24)
 
-    // --- left: what the mic reports, and brightness ---------------------------------------
+    // --- left: brightness, and what is saved --------------------------------------------------
     Column {
       id: leftCol
       width: (body.width - body.spacing) / 2
       spacing: Style.space(8)
 
-      Label { text: Mic.muteText(root.peri.mute) }
-      Caption { text: Mic.dialText(root.peri.dial) }
+      // The slider shows this look's saved brightness, else the microphone's own (not saved).
+      readonly property bool saved: root.peri.look.brightness >= 0
+      readonly property int percent: Mic.brightnessPercent(saved ? root.peri.look.brightness
+                                                                  : root.peri.deviceBrightness)
 
-      Label { text: "Brightness  " + root.peri.brightness + "%" }
+      Label { text: "Brightness  " + leftCol.percent + "%" + (leftCol.saved ? "" : "  (not saved)") }
       PanelSlider {
         width: parent.width
         bar: root.bar
@@ -75,16 +94,14 @@ Column {
         maximum: 100
         step: 1
         integer: true
-        enabled: !root.peri.busy
-        opacity: enabled ? 1 : 0.4
-        value: root.peri.brightness
-        // Released only: this is the one place a brightness write starts. The core waits for a
-        // moment of quiet and sends one set, so a scrolled wheel is not a burst of writes.
-        onReleased: function(v) { root.peri.setBrightness(v) }
+        value: leftCol.percent
+        // Released only: this saves the look. It never reaches the microphone.
+        onReleased: function(v) { root.peri.chooseBrightness(v) }
       }
+      Caption { text: Mic.lookText(root.peri.look) }
     }
 
-    // --- right: colour and effects --------------------------------------------------------
+    // --- right: colour and effects ------------------------------------------------------------
     Column {
       id: rightCol
       width: leftCol.width
@@ -102,15 +119,13 @@ Column {
             height: Style.space(34)
             radius: Style.space(8)
             color: "#" + modelData.hex
-            readonly property bool last: Mic.swatchSelected(modelData.hex, root.peri.last)
-            border.width: last ? 3 : 1
-            border.color: last ? Color.foreground : Color.muted
-            opacity: root.peri.busy ? 0.4 : 1
+            readonly property bool saved: Mic.swatchSelected(modelData.hex, root.peri.look)
+            border.width: saved ? 3 : 1
+            border.color: saved ? Color.foreground : Color.muted
             MouseArea {
               anchors.fill: parent
-              enabled: !root.peri.busy
               cursorShape: Qt.PointingHandCursor
-              onClicked: root.peri.setEffect("static", modelData.hex)
+              onClicked: root.peri.chooseEffect("static", modelData.hex)
             }
           }
         }
@@ -126,22 +141,44 @@ Column {
           delegate: Button {
             required property var modelData
             width: (effectRow.width - effectRow.spacing * 2) / 3
-            enabled: !root.peri.busy
-            selected: Mic.effectSelected(modelData.id, root.peri.last)
+            selected: Mic.effectSelected(modelData.id, root.peri.look)
             text: modelData.label
-            onClicked: root.peri.setEffect(modelData.id, "")
+            onClicked: root.peri.chooseEffect(modelData.id, "")
           }
         }
       }
-
-      Caption { text: Mic.lastSetText(root.peri.last) }
-      Caption {
-        text: "The microphone cannot report its colour or effect, so the highlight is what peri "
-          + "last sent it, and a change made any other way does not show. A change may be kept "
-          + "in its own memory, so brightness is sent when you let go of the slider, and only if "
-          + "the value changed."
-      }
     }
+  }
+
+  // --- Apply: the only thing here that writes to the microphone ----------------------------
+  Row {
+    width: parent.width
+    spacing: Style.space(12)
+
+    Button {
+      id: applyButton
+      width: Style.space(160)
+      enabled: root.peri.canApply
+      opacity: enabled ? 1 : 0.4
+      text: "Apply"
+      onClicked: root.peri.apply()
+    }
+    Caption {
+      width: parent.width - applyButton.width - parent.spacing
+      anchors.verticalCenter: parent.verticalCenter
+      text: Mic.applyText(root.peri.editing)
+    }
+  }
+
+  Caption {
+    visible: root.peri.notice !== ""
+    text: root.peri.notice
+  }
+
+  Caption {
+    text: "Editing a look only saves it. The microphone cannot report its colour or effect, so "
+      + "the highlights are your saved settings, not what it is showing. Apply sends the look, and "
+      + "the microphone may keep it in its own memory."
   }
 
   Text {

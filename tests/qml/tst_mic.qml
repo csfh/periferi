@@ -5,66 +5,21 @@ import "../../quickshell/peri/mic.js" as Mic
 TestCase {
   name: "mic"
 
-  // What `peri status` prints for a connected mic (bytes copied from the real device).
-  readonly property string full: "module   razer-seiren-v3-chroma\nfirmware 0101\nbrightness 102\nmute     muted\ndial     43\neffect   static\ncolor    0000FF\n"
+  // What `peri status` and `peri look ... get` print (shapes copied from the real daemon).
+  readonly property string status: "module   razer-seiren-v3-chroma\nfirmware 0101\nbrightness 102\nmute     muted\ndial     43\n"
+  function lookText(effect, color, brightness) {
+    return "module   razer-seiren-v3-chroma\nlook     unmuted\neffect   " + effect
+      + "\ncolor    " + color + "\nbrightness " + brightness + "\n"
+  }
+  function look(effect, color, brightness) {
+    return { effect: effect, color: color, brightness: brightness }
+  }
 
-  // --- reading `peri status` ------------------------------------------------------------
+  // --- reading `peri status`: online, and the mic's own brightness ---------------------------
   function test_parse_status() {
-    var s = Mic.parseStatus(full)
+    var s = Mic.parseStatus(status)
     compare(s.online, true)
     compare(s.brightness, 102)
-    compare(s.mute, "muted")
-    compare(s.dial, 43)
-    compare(s.firmware, "0101")
-    compare(s.effect, "static")
-    compare(s.color, "0000ff")   // lowercased so it equals a preset
-  }
-
-  // The daemon's record of what peri last sent: unknown, or an effect, with a colour only for static.
-  function test_last_effect_and_colour() {
-    var base = "module m\nbrightness 10\n"
-    var s = Mic.parseStatus(base + "effect unknown\ncolor none\n")
-    compare(s.effect, ""); compare(s.color, "")
-    s = Mic.parseStatus(base + "effect none\ncolor none\n")       // "none" is a real effect: Off
-    compare(s.effect, "none"); compare(s.color, "")
-    s = Mic.parseStatus(base + "effect breathing\ncolor 0000ff\n") // a stale colour is not kept
-    compare(s.effect, "breathing"); compare(s.color, "")
-    s = Mic.parseStatus(base + "effect static\ncolor zz\n")
-    compare(s.effect, "static"); compare(s.color, "")
-    s = Mic.parseStatus(base + "effect rainbow\ncolor none\n")
-    compare(s.effect, "")
-    s = Mic.parseStatus(base)
-    compare(s.effect, ""); compare(s.color, "")
-    compare(Mic.parseStatus("").effect, "")
-  }
-
-  // The highlight follows the record; "static" lights its swatch only while it is the last effect.
-  function test_selection_follows_the_record() {
-    var spec = { effect: "spectrum", color: "" }
-    var blue = { effect: "static", color: "0000ff" }
-    var none = { effect: "", color: "" }
-    verify(Mic.effectSelected("spectrum", spec))
-    verify(!Mic.effectSelected("breathing", spec))
-    verify(!Mic.effectSelected("spectrum", none))
-    verify(!Mic.effectSelected("spectrum", null))
-    verify(Mic.swatchSelected("0000ff", blue))
-    verify(Mic.swatchSelected("0000FF", blue))
-    verify(!Mic.swatchSelected("ff0000", blue))
-    verify(!Mic.swatchSelected("0000ff", spec))       // another effect: no swatch is lit
-    verify(!Mic.swatchSelected("0000ff", none))
-    verify(!Mic.swatchSelected("bad", blue))
-    compare(Mic.lastSetText(none), "Not set from peri yet")
-    compare(Mic.lastSetText(null), "Not set from peri yet")
-    compare(Mic.lastSetText(spec), "Last set from peri: spectrum")
-    compare(Mic.lastSetText(blue), "Last set from peri: colour 0000ff")
-    compare(Mic.lastSetText({ effect: "none", color: "" }), "Last set from peri: off")
-  }
-
-  function test_unknown_mute_and_dial() {
-    var s = Mic.parseStatus("module   m\nfirmware 0101\nbrightness 102\nmute     unknown\ndial     unknown\n")
-    compare(s.online, true)
-    compare(s.mute, "unknown")
-    compare(s.dial, null)
   }
 
   // A refusal or nothing at all means offline: a pane must never show stale numbers as live.
@@ -76,73 +31,117 @@ TestCase {
     compare(Mic.parseStatus("module m\nbrightness abc\n").online, false)
     compare(Mic.parseStatus("brightness 10\n").online, false)                       // no module
     compare(Mic.parseStatus(undefined).online, false)
-    compare(Mic.parseStatus("").mute, "unknown")
   }
 
-  function test_odd_mute_and_dial_values_are_unknown() {
-    var s = Mic.parseStatus("module m\nbrightness 5\nmute loud\ndial 4x\n")
-    compare(s.mute, "unknown")
-    compare(s.dial, null)
+  // --- reading a saved look ------------------------------------------------------------------
+  function test_parse_look() {
+    compare(Mic.parseLook(lookText("static", "0000FF", "102")), look("static", "0000ff", 102))
+    compare(Mic.parseLook(lookText("breathing", "none", "40")), look("breathing", "", 40))
+    compare(Mic.parseLook(lookText("none", "none", "0")), look("none", "", 0)) // Off is a real effect
+    compare(Mic.parseLook(lookText("unset", "none", "unset")), look("", "", -1))
+    compare(Mic.parseLook(lookText("spectrum", "none", "unset")), look("spectrum", "", -1))
   }
 
-  // --- brightness: a percentage of the protocol's 0 to 255 -------------------------------
-  function test_brightness_percent_round_trips_the_real_value() {
-    compare(Mic.brightnessPercent(102), 40)
-    compare(Mic.brightnessPercent(0), 0)
-    compare(Mic.brightnessPercent(255), 100)
-    compare(Mic.brightnessSetting(40, 0), "brightness=102")   // 40 percent is exactly 102
-    compare(Mic.brightnessSetting(100, 0), "brightness=255")
-    compare(Mic.brightnessSetting(0, 5), "brightness=0")
+  // Bad or missing fields spoil only themselves, and a failed read is not an empty look.
+  function test_parse_look_bad_fields() {
+    compare(Mic.parseLook(lookText("rainbow", "none", "70")), look("", "", 70))
+    compare(Mic.parseLook(lookText("static", "none", "70")), look("", "", 70))    // static needs a colour
+    compare(Mic.parseLook(lookText("static", "zz", "70")), look("", "", 70))
+    compare(Mic.parseLook(lookText("breathing", "0000ff", "70")), look("breathing", "", 70)) // stray colour
+    compare(Mic.parseLook(lookText("none", "none", "300")), look("none", "", -1))
+    compare(Mic.parseLook(lookText("none", "none", "abc")), look("none", "", -1))
+    compare(Mic.parseLook(""), null)
+    compare(Mic.parseLook("razer-seiren-v3-chroma: the static effect needs a color=<rrggbb>\n"), null)
+    compare(Mic.parseLook("module m\n"), null)                                      // no look line
+    compare(Mic.parseLook(undefined), null)
   }
 
-  // A release that changes nothing sends nothing: each set may wear the device's memory.
-  function test_an_unchanged_value_is_never_sent() {
-    compare(Mic.brightnessSetting(40, 102), null)
-    compare(Mic.brightnessSetting(100, 255), null)
-    compare(Mic.brightnessSetting(41, 102), "brightness=105")
+  // --- editing a look: whole-look results, never merged on the daemon -----------------------
+  function test_with_effect() {
+    var base = look("breathing", "", 40)
+    compare(Mic.withEffect(base, "static", "0000FF"), look("static", "0000ff", 40)) // brightness is kept
+    compare(Mic.withEffect(look("static", "0000ff", 40), "spectrum", "0000ff"), look("spectrum", "", 40)) // colour dropped
+    compare(Mic.withEffect(base, "none", undefined), look("none", "", 40))
+    compare(Mic.withEffect(look("", "", -1), "breathing", ""), look("breathing", "", -1))
   }
 
-  function test_brightness_is_clamped() {
-    compare(Mic.brightnessSetting(150, 0), "brightness=255")
-    compare(Mic.brightnessSetting(-20, 7), "brightness=0")
-    compare(Mic.brightnessSetting("junk", 7), "brightness=0")
+  function test_bad_effects_are_not_built() {
+    var base = look("", "", -1)
+    compare(Mic.withEffect(base, "static", ""), null)
+    compare(Mic.withEffect(base, "static", "00ff"), null)
+    compare(Mic.withEffect(base, "static", "zz0000"), null)
+    compare(Mic.withEffect(base, "static", "0000ff; rm"), null)
+    compare(Mic.withEffect(base, "rainbow", "0000ff"), null)
+    compare(Mic.withEffect(base, "", ""), null)
   }
 
-  // --- effects: buttons with no "current" one -------------------------------------------
-  function test_effect_settings() {
-    compare(Mic.effectSettings("static", "0000ff"), ["effect=static", "color=0000ff"])
-    compare(Mic.effectSettings("static", "FF00AA"), ["effect=static", "color=ff00aa"])
-    compare(Mic.effectSettings("breathing", ""), ["effect=breathing"])
-    compare(Mic.effectSettings("spectrum", "0000ff"), ["effect=spectrum"]) // a colour is ignored
-    compare(Mic.effectSettings("none", undefined), ["effect=none"])
+  function test_with_brightness() {
+    compare(Mic.withBrightness(look("static", "0000ff", 0), 40), look("static", "0000ff", 102))
+    compare(Mic.withBrightness(look("", "", -1), 100), look("", "", 255))
+    compare(Mic.withBrightness(look("", "", -1), 150), look("", "", 255))   // clamped
+    compare(Mic.withBrightness(look("", "", 5), -20), look("", "", 0))
+    compare(Mic.withBrightness(look("", "", 5), "junk"), look("", "", 0))
   }
 
-  function test_bad_effects_are_not_sent() {
-    compare(Mic.effectSettings("static", ""), null)
-    compare(Mic.effectSettings("static", "00ff"), null)
-    compare(Mic.effectSettings("static", "zz0000"), null)
-    compare(Mic.effectSettings("static", "0000ff; rm"), null)
-    compare(Mic.effectSettings("rainbow", "0000ff"), null)
-    compare(Mic.effectSettings("", ""), null)
+  // A release that does not move the value saves nothing.
+  function test_an_unchanged_brightness_is_not_saved() {
+    compare(Mic.withBrightness(look("none", "", 102), 40), null)
+    compare(Mic.withBrightness(look("", "", 255), 100), null)
   }
 
-  // Every preset must be a colour the daemon accepts, and every button one it knows.
-  function test_presets_and_effects_are_valid() {
+  // --- the arguments of `peri look` ---------------------------------------------------------
+  function test_save_args() {
+    compare(Mic.saveArgs("unmuted", look("static", "0000ff", 102)),
+            ["save", "unmuted", "effect=static", "color=0000ff", "brightness=102"])
+    compare(Mic.saveArgs("muted", look("breathing", "", -1)), ["save", "muted", "effect=breathing"])
+    compare(Mic.saveArgs("muted", look("none", "", 0)), ["save", "muted", "effect=none", "brightness=0"])
+    compare(Mic.saveArgs("muted", look("", "", 40)), ["save", "muted", "brightness=40"])
+    compare(Mic.saveArgs("unmuted", look("", "", -1)), ["save", "unmuted"])      // clears the look
+    compare(Mic.saveArgs("muted", look("breathing", "0000ff", -1)), ["save", "muted", "effect=breathing"])
+    compare(Mic.applyArgs("muted"), ["apply", "muted"])
+  }
+
+  function test_can_apply() {
+    verify(Mic.canApply(look("none", "", -1)))
+    verify(Mic.canApply(look("", "", 0)))
+    verify(!Mic.canApply(look("", "", -1)))
+    verify(!Mic.canApply(null))
+  }
+
+  // --- the highlight follows the saved look -------------------------------------------------
+  function test_selection_follows_the_saved_look() {
+    var spec = look("spectrum", "", -1), blue = look("static", "0000ff", 10), none = look("", "", -1)
+    verify(Mic.effectSelected("spectrum", spec))
+    verify(!Mic.effectSelected("breathing", spec))
+    verify(!Mic.effectSelected("spectrum", none))
+    verify(!Mic.effectSelected("spectrum", null))
+    verify(Mic.swatchSelected("0000ff", blue))
+    verify(Mic.swatchSelected("0000FF", blue))
+    verify(!Mic.swatchSelected("ff0000", blue))
+    verify(!Mic.swatchSelected("0000ff", spec))       // another effect: no swatch is lit
+    verify(!Mic.swatchSelected("0000ff", none))
+    verify(!Mic.swatchSelected("bad", blue))
+  }
+
+  // --- texts ---------------------------------------------------------------------------------
+  function test_texts() {
+    compare(Mic.lookText(look("", "", -1)), "Nothing saved in this look yet")
+    compare(Mic.lookText(null), "Nothing saved in this look yet")
+    compare(Mic.lookText(look("static", "0000ff", 102)), "Saved: colour 0000ff, brightness 40%")
+    compare(Mic.lookText(look("none", "", -1)), "Saved: off")
+    compare(Mic.lookText(look("", "", 255)), "Saved: brightness 100%")
+    compare(Mic.lookLabel("unmuted"), "Unmuted look")
+    compare(Mic.lookLabel("muted"), "Muted look")
+    compare(Mic.lookLabel("other"), "")
+    verify(Mic.applyText("muted").indexOf("muted look") >= 0)
+    verify(Mic.applyText("muted").indexOf("whatever its mute state") >= 0)
+  }
+
+  function test_fixed_lists() {
     Mic.presets.forEach(function(p) { verify(Mic.validHex(p.hex), p.name) })
     compare(Mic.presets.length, 8)
     compare(Mic.effects.map(function(e) { return e.id }), ["static", "breathing", "spectrum", "none"])
-    Mic.effects.forEach(function(e) {
-      verify(Mic.effectSettings(e.id, "0000ff") !== null, e.id)
-    })
-  }
-
-  // --- texts ------------------------------------------------------------------------------
-  function test_texts() {
-    compare(Mic.muteText("muted"), "Muted")
-    compare(Mic.muteText("unmuted"), "Not muted")
-    verify(Mic.muteText("unknown").indexOf("unknown") >= 0)
-    compare(Mic.dialText(43), "Dial 43")
-    compare(Mic.dialText(0), "Dial 0")
-    compare(Mic.dialText(null), "Dial not turned yet")
+    compare(Mic.looks.map(function(l) { return l.id }), ["unmuted", "muted"])
+    Mic.effects.forEach(function(e) { verify(Mic.withEffect(look("", "", -1), e.id, "0000ff") !== null, e.id) })
   }
 }

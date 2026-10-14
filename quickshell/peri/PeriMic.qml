@@ -2,126 +2,190 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "mic.js" as M
+import "lighting.js" as L
 import "cli.js" as Cli
 
 // A microphone (the Razer Seiren V3 Chroma) as seen by the peri daemon. Like PeriLighting it
 // imports nothing from the host shell and draws nothing; hosts bind to the properties below.
 //
 //   PeriMic { id: mic; moduleId: "razer-seiren-v3-chroma" }
-//   MySlider { value: mic.brightness; onReleased: v => mic.setBrightness(v) }
+//   MyButton { onClicked: mic.chooseEffect("spectrum", "") }
+//   MyApply { onClicked: mic.apply() }
 //
-// It reads `peri status <module>` and writes `peri set <module> ...`. Two facts shape it:
-//   - The mic cannot report its effect or colour. The daemon keeps a record of what peri last
-//     sent it, and lastEffect / lastColor expose that record: it is not what the mic shows, and a
-//     change made any other way is not in it.
-//   - A set may be kept in the mic's own memory. So a change is only ever sent from a deliberate
-//     gesture: setBrightness() belongs in a slider's `released` handler (never `moved`, and never
-//     a binding), and after the last release the pane waits `quiet` ms and sends ONE set, so a
-//     wheel scrolled over the slider (one `released` per notch) or a quick second drag is not a
-//     burst of writes. A value equal to what the mic already has is not sent at all.
+// The mic cannot be asked for its effect or colour, so the daemon keeps two saved LOOKS for it,
+// Unmuted and Muted, each an effect, a colour and a brightness. This scope edits one of them at a
+// time (`editing`). chooseEffect() and chooseBrightness() only SAVE the look being edited
+// (`peri look ... save`, a file, never the mic); apply() is the only call that reaches the mic
+// (`peri look ... apply`). A write to the mic may be kept in its own memory, so nothing but a
+// deliberate apply() sends one. Reads happen when refresh() is called, which a host does when it
+// opens the pane, not on a timer.
 Scope {
   id: root
 
   property string periPath: Quickshell.env("HOME") + "/.local/bin/peri"
-  property string moduleId: ""   // the installed module that drives this mic
-  property int quiet: 600        // ms of quiet after the last brightness release before the set
+  property string moduleId: ""            // the installed module that drives this mic
+  property string editing: "unmuted"      // the look the controls edit; a pane opens on Unmuted
 
   readonly property bool online: state.online
-  readonly property int brightness: state.brightness   // percent of the protocol's 0-255
-  readonly property string mute: state.mute             // "muted", "unmuted" or "unknown"
-  readonly property var dial: state.dial                // the level as reported, or null
-  readonly property string lastEffect: state.effect     // what peri last sent: "static", "breathing",
-                                                        // "spectrum", "none", or "" if never
-  readonly property string lastColor: state.color       // six hex digits for "static", else ""
-  readonly property var last: ({ effect: state.effect, color: state.color }) // for mic.js's helpers
-  readonly property bool busy: setter.running || debounce.running
+  readonly property var look: state.looks[root.editing]   // { effect, color, brightness } being edited
+  readonly property int deviceBrightness: state.deviceBrightness // the mic's own, 0-255
+  readonly property bool canApply: state.online && M.canApply(root.look) && !applier.running
+  readonly property bool busy: applier.running
+  readonly property string notice: state.notice  // what the last apply sent, or ""
   readonly property string error: state.error
 
-  // Read the mic's state. Skipped while a write is waiting or running, so a refresh never puts
-  // an old value back under a slider that was just released.
+  // Read the mic's online state and brightness, and both saved looks. Skipped while an apply is
+  // running. Nothing here writes to the mic.
   function refresh() {
-    if (root.moduleId === "" || query.running || setter.running || debounce.running) return
-    query.running = true
+    if (root.moduleId === "" || applier.running) return
+    state.notice = ""
+    if (!status.running) status.running = true
+    if (!getUnmuted.running) getUnmuted.running = true
+    if (!getMuted.running) getMuted.running = true
   }
 
-  // Call from a slider's `released` only. The new value shows at once; the mic's answer to the
-  // refresh that follows the write confirms it or puts the old one back.
-  function setBrightness(percent) {
-    if (!state.online || root.moduleId === "") return
-    state.brightness = Math.max(0, Math.min(100, Math.round(percent)))
-    state.wanted = percent
-    debounce.restart()
+  function selectLook(which) {
+    if (which === "unmuted" || which === "muted") root.editing = which
   }
 
-  // A button press: "static" with a colour (six hex digits), or "breathing", "spectrum", "none".
-  function setEffect(id, hex) {
-    var settings = M.effectSettings(id, hex)
-    if (settings !== null) send(settings)
+  // An effect button or a swatch: saves the look being edited with that effect. File only.
+  function chooseEffect(id, hex) {
+    var next = M.withEffect(root.look, id, hex)
+    if (next !== null) saveLook(root.editing, next)
   }
 
-  function send(settings) {
-    if (root.moduleId === "" || setter.running) return
+  // Call from a slider's `released`: saves the look being edited with that brightness. File only.
+  function chooseBrightness(percent) {
+    var next = M.withBrightness(root.look, percent)
+    if (next !== null) saveLook(root.editing, next)
+  }
+
+  // Send the look being edited to the mic. The only call here that does.
+  function apply() {
+    if (!root.canApply || root.moduleId === "") return
     state.error = ""
+    state.notice = ""
     state.errText = ""
-    setter.command = Cli.command(root.periPath, ["set", root.moduleId].concat(settings))
-    setter.running = true
+    applier.which = root.editing
+    applier.command = Cli.command(root.periPath, ["look", root.moduleId].concat(M.applyArgs(root.editing)))
+    applier.running = true
+  }
+
+  function saveLook(which, look) {
+    if (root.moduleId === "") return
+    var looks = { unmuted: state.looks.unmuted, muted: state.looks.muted }
+    looks[which] = look
+    state.looks = looks // shown at once; the daemon's answer confirms it or puts it back
+    state.error = ""
+    state.pending = { which: which, look: look }
+    if (!saver.running) sendPending()
+  }
+
+  function sendPending() {
+    var p = state.pending
+    if (p === null) return
+    state.pending = null
+    saver.which = p.which
+    saver.command = Cli.command(root.periPath, ["look", root.moduleId].concat(M.saveArgs(p.which, p.look)))
+    saver.running = true
   }
 
   QtObject {
     id: state
     property bool online: false
-    property int rawBrightness: 0   // 0-255 as the mic holds it
-    property int brightness: 0      // percent, what the slider shows
-    property real wanted: 0         // the percent of the last release, waiting to be sent
-    property string mute: "unknown"
-    property var dial: null
-    property string effect: ""
-    property string color: ""
+    property int deviceBrightness: 0
+    property var looks: ({ unmuted: M.emptyLook(), muted: M.emptyLook() })
+    property var pending: null      // the newest save waiting for the one in flight: last one wins
+    property string notice: ""
     property string error: ""
     property string errText: ""
   }
 
-  function parse(text) {
-    var s = M.parseStatus(text)
-    state.online = s.online
-    if (!s.online) return
-    state.rawBrightness = s.brightness
-    state.brightness = M.brightnessPercent(s.brightness)
-    state.mute = s.mute
-    state.dial = s.dial
-    state.effect = s.effect
-    state.color = s.color
-  }
-
-  Timer {
-    id: debounce
-    interval: root.quiet
-    onTriggered: {
-      var setting = M.brightnessSetting(state.wanted, state.rawBrightness)
-      if (setting !== null) root.send([setting])
-      else root.refresh()
-    }
+  function setLook(which, look) {
+    var looks = { unmuted: state.looks.unmuted, muted: state.looks.muted }
+    looks[which] = look
+    state.looks = looks
   }
 
   Process {
-    id: query
+    id: status
     command: Cli.command(root.periPath, ["status", root.moduleId])
     stdout: StdioCollector {
-      onStreamFinished: root.parse(this.text)
+      onStreamFinished: {
+        var s = M.parseStatus(this.text)
+        state.online = s.online
+        if (s.online) state.deviceBrightness = s.brightness
+      }
     }
     onExited: function(exitCode) {
       if (exitCode !== 0) state.online = false
     }
   }
 
+  // The saved looks. A failed read leaves what is shown as it is, and a save in flight wins.
   Process {
-    id: setter
+    id: getUnmuted
+    command: Cli.command(root.periPath, ["look", root.moduleId, "get", "unmuted"])
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var look = M.parseLook(this.text)
+        if (look !== null && !saver.running && state.pending === null) root.setLook("unmuted", look)
+      }
+    }
+  }
+  Process {
+    id: getMuted
+    command: Cli.command(root.periPath, ["look", root.moduleId, "get", "muted"])
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var look = M.parseLook(this.text)
+        if (look !== null && !saver.running && state.pending === null) root.setLook("muted", look)
+      }
+    }
+  }
+
+  // `peri look ... save` answers with the look as the daemon saved it, in the format of `get`.
+  Process {
+    id: saver
+    property string which: "unmuted"
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var look = M.parseLook(this.text)
+        if (look !== null && state.pending === null) root.setLook(saver.which, look)
+      }
+    }
     stderr: StdioCollector {
       onStreamFinished: state.errText = this.text.trim()
     }
     onExited: function(exitCode) {
-      state.error = exitCode === 0 ? "" : (state.errText || "the microphone did not accept the change")
-      Qt.callLater(root.refresh) // read back what the mic holds now
+      if (exitCode !== 0) {
+        state.error = state.errText || "the look could not be saved"
+        state.pending = null
+        root.refresh()
+      } else if (state.pending !== null) {
+        root.sendPending()
+      }
+    }
+  }
+
+  Process {
+    id: applier
+    property string which: "unmuted"
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var v = L.parseValues(this.text)
+        if (v.applied) state.notice = "Sent the " + M.lookLabel(v.applied).toLowerCase() + " to the microphone."
+      }
+    }
+    stderr: StdioCollector {
+      onStreamFinished: state.errText = this.text.trim()
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        state.notice = ""
+        state.error = state.errText || "the microphone did not accept the look"
+      }
+      if (!status.running) status.running = true // read the brightness it holds now
     }
   }
 }

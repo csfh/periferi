@@ -2,20 +2,24 @@
 .import "lighting.js" as L
 
 // The microphone pane's logic, free of UI and process code so it can be tested on its own.
-// It reads `peri status <module>` and builds the arguments of `peri set <module> ...`.
+// It reads `peri status` and `peri look ... get` and builds the arguments of `peri look ... save`.
 //
-// Two facts shape it. The mic cannot be asked for its effect or colour, so the daemon keeps a
-// record of what peri last SENT it (`effect` and `color` in `peri status`), and that record is
-// all the pane can show: it is not what the mic is displaying, and a change made any other way
-// is not in it. And a set may be kept in the device's own memory, so a value is only ever sent
-// from a deliberate gesture (a slider released, a button pressed), and never because a refresh
-// changed what a slider shows.
+// The pane edits two saved looks, Unmuted and Muted. A look is a set of the user's SETTINGS (an
+// effect, a colour for the static effect, a brightness), kept by the daemon because the mic can
+// neither report its effect or colour nor say which look is showing. Editing a look only saves it;
+// nothing reaches the mic until the user presses Apply. That keeps every write to the mic a
+// deliberate click, which matters because a write may be kept in the mic's own memory.
 
 // The module declares the protocol's one-byte range as its brightness limit.
 var maxBrightness = 255
 
-// The effect buttons. The highlighted one is the last the mic accepted from peri, not a reading
-// of what the mic shows.
+// The two looks, in the order the switch shows them.
+var looks = [
+  { id: "unmuted", label: "Unmuted look" },
+  { id: "muted", label: "Muted look" }
+]
+
+// The effect buttons. The highlighted one is the one saved in the look being edited.
 var effects = [
   { id: "static", label: "Colour", needsColor: true },
   { id: "breathing", label: "Breathing", needsColor: false }, // pulses through random colours
@@ -31,78 +35,101 @@ var presets = [
   { name: "Purple", hex: "8000ff" }, { name: "White", hex: "ffffff" }
 ]
 
-// `peri status` prints "key   value" lines (module, firmware, brightness, mute, dial, effect,
-// color). Anything that is not a full answer, such as an empty reply or a refusal, means the mic
-// is offline. effect is "" when peri has no record (the daemon prints "unknown"), and color is ""
-// unless the recorded effect is "static". firmware is not shown: what its bytes mean is not
-// established.
-function parseStatus(text) {
-  var v = L.parseValues(text)
-  var brightness = /^\d+$/.test(v.brightness || "") ? Number(v.brightness) : -1
-  if (!v.module || brightness < 0 || brightness > maxBrightness)
-    return { online: false, brightness: 0, mute: "unknown", dial: null, firmware: "", effect: "", color: "" }
-  return {
-    online: true,
-    brightness: brightness,
-    mute: v.mute === "muted" || v.mute === "unmuted" ? v.mute : "unknown",
-    dial: /^\d+$/.test(v.dial || "") ? Number(v.dial) : null,
-    firmware: v.firmware || "",
-    effect: knownEffect(v.effect) ? v.effect : "",
-    color: v.effect === "static" && validHex(v.color) ? v.color.toLowerCase() : ""
-  }
-}
+function validHex(hex) { return typeof hex === "string" && /^[0-9a-fA-F]{6}$/.test(hex) }
 
 function knownEffect(id) {
   return effects.some(function(x) { return x.id === id })
 }
 
+function emptyLook() { return { effect: "", color: "", brightness: -1 } }
+
+// `peri status` prints "key   value" lines. Anything that is not a full answer, such as an empty
+// reply or a refusal, means the mic is offline. Only what the pane uses is read: brightness is the
+// mic's own value, shown on the slider while the look being edited has none saved.
+function parseStatus(text) {
+  var v = L.parseValues(text)
+  var brightness = /^\d+$/.test(v.brightness || "") ? Number(v.brightness) : -1
+  if (!v.module || brightness < 0 || brightness > maxBrightness)
+    return { online: false, brightness: 0 }
+  return { online: true, brightness: brightness }
+}
+
+// `peri look <module> get|save <which>` prints the look as "key   value" lines, with "unset" for an
+// effect or brightness that is not saved and "none" for no colour. Returns null if that is not a
+// look (a refusal, or nothing), so a failed read is never mistaken for an empty look.
+function parseLook(text) {
+  var v = L.parseValues(text)
+  if (!v.module || !v.look) return null
+  var look = emptyLook()
+  if (knownEffect(v.effect)) look.effect = v.effect
+  if (look.effect === "static" && validHex(v.color)) look.color = v.color.toLowerCase()
+  else if (look.effect === "static") look.effect = ""
+  if (/^\d+$/.test(v.brightness || "") && Number(v.brightness) <= maxBrightness)
+    look.brightness = Number(v.brightness)
+  return look
+}
+
 function brightnessPercent(value) { return L.valToPercent(value, maxBrightness) }
 
-// A released slider: the setting to send, or null when it would not change anything (a set
-// that changes nothing still costs a write, so it is never sent).
-function brightnessSetting(percent, currentValue) {
-  var value = L.percentToVal(percent, maxBrightness)
-  return value === currentValue ? null : "brightness=" + value
-}
-
-function validHex(hex) { return typeof hex === "string" && /^[0-9a-fA-F]{6}$/.test(hex) }
-
-// The arguments of one effect button: ["effect=static", "color=0000ff"], ["effect=spectrum"], ...
-// null for an unknown effect, or for "static" without a valid colour.
-function effectSettings(id, hex) {
+// Pressing an effect button or a swatch: the look with that effect. "static" needs a colour (a
+// swatch); every other effect drops it. null for an unknown effect or a missing or bad colour.
+function withEffect(look, id, hex) {
   var e = effects.filter(function(x) { return x.id === id })[0]
   if (!e) return null
-  if (!e.needsColor) return ["effect=" + id]
-  if (!validHex(hex)) return null
-  return ["effect=" + id, "color=" + hex.toLowerCase()]
+  if (e.needsColor && !validHex(hex)) return null
+  return { effect: id, color: e.needsColor ? hex.toLowerCase() : "", brightness: look.brightness }
 }
 
-function muteText(mute) {
-  if (mute === "muted") return "Muted"
-  if (mute === "unmuted") return "Not muted"
-  return "Mute state unknown until you tap the mic"
+// A released slider: the look with that brightness, or null when it would change nothing (so
+// nothing is saved for a release that did not move the value).
+function withBrightness(look, percent) {
+  var value = L.percentToVal(percent, maxBrightness)
+  if (value === look.brightness) return null
+  return { effect: look.effect, color: look.color, brightness: value }
 }
 
-// The dial's level as it is reported (observed 20 to 100). It is not called gain or volume,
-// because what it controls is not established.
-function dialText(dial) {
-  return dial === null ? "Dial not turned yet" : "Dial " + dial
+// The arguments of `peri look <module> ...` that save a whole look. A field that is not set is
+// left out, which the daemon reads as "not set": the look is replaced, never merged.
+function saveArgs(which, look) {
+  var args = ["save", which]
+  if (look.effect !== "") args.push("effect=" + look.effect)
+  if (look.effect === "static" && look.color !== "") args.push("color=" + look.color)
+  if (look.brightness >= 0) args.push("brightness=" + look.brightness)
+  return args
 }
 
-// Is this the effect peri last sent? last = { effect, color } from parseStatus. The "Colour" effect
-// has no button of its own: its swatches carry it.
-function effectSelected(id, last) {
-  return !!last && last.effect !== "" && last.effect === id
+function applyArgs(which) { return ["apply", which] }
+
+// Is there anything to send? An empty look has nothing to apply.
+function canApply(look) { return !!look && (look.effect !== "" || look.brightness >= 0) }
+
+function effectSelected(id, look) {
+  return !!look && look.effect !== "" && look.effect === id
 }
 
-// Is this swatch the colour peri last sent? Only when the last effect was "static".
-function swatchSelected(hex, last) {
-  return !!last && last.effect === "static" && validHex(hex) && last.color === hex.toLowerCase()
+function swatchSelected(hex, look) {
+  return !!look && look.effect === "static" && validHex(hex) && look.color === hex.toLowerCase()
 }
 
-function lastSetText(last) {
-  if (!last || last.effect === "") return "Not set from peri yet"
-  var e = effects.filter(function(x) { return x.id === last.effect })[0]
-  var name = e.id === "static" ? "colour " + last.color : e.label.toLowerCase()
-  return "Last set from peri: " + name
+function lookLabel(which) {
+  var l = looks.filter(function(x) { return x.id === which })[0]
+  return l ? l.label : ""
+}
+
+// The saved look in words, for the line under the buttons.
+function lookText(look) {
+  if (!canApply(look)) return "Nothing saved in this look yet"
+  var parts = []
+  if (look.effect !== "") {
+    var e = effects.filter(function(x) { return x.id === look.effect })[0]
+    parts.push(look.effect === "static" ? "colour " + look.color : e.label.toLowerCase())
+  }
+  if (look.brightness >= 0) parts.push("brightness " + brightnessPercent(look.brightness) + "%")
+  return "Saved: " + parts.join(", ")
+}
+
+// What Apply sends, in words, for the line beside the button.
+function applyText(which) {
+  return "Sends the " + lookLabel(which).toLowerCase() + " to the microphone now, "
+    + "whatever its mute state."
 }
