@@ -29,7 +29,9 @@ Scope {
   readonly property bool online: state.online
   readonly property var look: state.looks[root.editing]   // { effect, color, brightness } being edited
   readonly property int deviceBrightness: state.deviceBrightness // the mic's own, 0-255
+  // Apply waits for any save to reach the daemon, so it can never send an older look than the one shown.
   readonly property bool canApply: state.online && M.canApply(root.look) && !applier.running
+                                   && !saver.running && state.pending === null
   readonly property bool busy: applier.running
   readonly property string notice: state.notice  // what the last apply sent, or ""
   readonly property string error: state.error
