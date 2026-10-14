@@ -22,7 +22,7 @@ target_include_directories(tomlc17 PUBLIC vendor/tomlc17)
 target_compile_options(tomlc17 PRIVATE -w)
 
 add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/scan.c src/xap.c)
-add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/rgb_cmd.c src/scan.c src/xap.c)
+add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c)
 target_link_libraries(peri PRIVATE tomlc17)
 target_link_libraries(perid PRIVATE tomlc17)
 
@@ -45,6 +45,9 @@ add_executable(udev_test tests/udev_test.c src/udev.c src/module.c)
 target_link_libraries(udev_test PRIVATE tomlc17)
 add_test(NAME udev COMMAND udev_test)
 
+add_executable(rgb_settings_test tests/rgb_settings_test.c src/rgb_settings.c src/xap.c src/scan.c)
+add_test(NAME rgb_settings COMMAND rgb_settings_test)
+
 add_executable(json_test tests/json_test.c src/json.c)
 add_test(NAME json COMMAND json_test)
 
@@ -59,7 +62,7 @@ add_test(NAME module COMMAND module_test)
 # The pass pattern demands at least one passed test, so an empty or mistyped run cannot pass.
 find_program(QMLTESTRUNNER NAMES qmltestrunner qmltestrunner6 PATHS /usr/lib/qt6/bin NO_DEFAULT_PATH)
 if(QMLTESTRUNNER)
-  add_test(NAME qml COMMAND ${QMLTESTRUNNER} -input ${CMAKE_SOURCE_DIR}/tests/qml/tst_menu.qml)
+  add_test(NAME qml COMMAND ${QMLTESTRUNNER} -input ${CMAKE_SOURCE_DIR}/tests/qml)
   set_tests_properties(qml PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
     PASS_REGULAR_EXPRESSION "Totals: [1-9][0-9]* passed, 0 failed")

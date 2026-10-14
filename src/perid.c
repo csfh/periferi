@@ -176,7 +176,7 @@ static void handle(int client)
         return;
     }
     if (strncmp(req, "rgb ", 4) == 0) {
-        char reply[512];
+        char reply[1024];
         rgb_handle(req + 4, reply, sizeof reply);
         (void)!write(client, reply, strlen(reply));
         return;

@@ -645,6 +645,62 @@ static void print_modules_json(const struct mod_row *rows, size_t count)
 }
 
 // peri modules [--json]: the bundled catalog plus whatever is installed.
+// Developer probe: the keyboard's configuration blob (routes 0x01 0x05 length, 0x01 0x06 chunk),
+// written raw to stdout. Read-only; the node must be an XAP control interface. Chunks are 32 bytes
+// at a u16 little-endian offset (xap_0.3.1). The blob is the board's own description of itself.
+static int cmd_blob(const char *arg)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+    if (!node_allowed(name, true))
+        return 1;
+    if (isatty(STDOUT_FILENO)) {
+        fprintf(stderr, "peri: the blob is binary; redirect it to a file\n");
+        return 2;
+    }
+
+    int fd = xap_open(name);
+    if (fd < 0)
+        return 1;
+
+    static constexpr uint8_t length_route[] = { 0x01, 0x05 };
+    static constexpr uint8_t chunk_route[] = { 0x01, 0x06 };
+    struct xap_reply reply;
+    if (xap_call(fd, length_route, sizeof length_route, nullptr, 0, &reply) < 0
+        || !(reply.flags & 0x01) || reply.len != 2) {
+        fprintf(stderr, "peri: could not read the blob length\n");
+        close(fd);
+        return 1;
+    }
+    size_t total = reply.payload[0] | (size_t)reply.payload[1] << 8;
+    if (total == 0 || total > 16384) { // far above the 1615 bytes seen; refuse nonsense
+        fprintf(stderr, "peri: implausible blob length %zu\n", total);
+        close(fd);
+        return 1;
+    }
+
+    for (size_t offset = 0; offset < total;) {
+        uint8_t payload[2] = { (uint8_t)offset, (uint8_t)(offset >> 8) };
+        if (xap_call(fd, chunk_route, sizeof chunk_route, payload, sizeof payload, &reply) < 0
+            || !(reply.flags & 0x01) || reply.len == 0) {
+            fprintf(stderr, "peri: reading the blob failed at offset %zu\n", offset);
+            close(fd);
+            return 1;
+        }
+        size_t take = reply.len < total - offset ? reply.len : total - offset;
+        if (fwrite(reply.payload, 1, take, stdout) != take) {
+            perror("peri: write");
+            close(fd);
+            return 1;
+        }
+        offset += take;
+    }
+    close(fd);
+    fprintf(stderr, "peri: read %zu bytes\n", total);
+    return 0;
+}
+
 static int cmd_modules(int argc, char **argv)
 {
     bool json = false;
@@ -701,7 +757,7 @@ static int cmd_rgb(int argc, char **argv)
     req[len] = '\n';
     req[len + 1] = '\0';
 
-    char reply[512];
+    char reply[1024]; // the effect list alone is about 700 bytes
     if (request(req, reply, sizeof reply) <= 0)
         return 1;
     if (strncmp(reply, "ok", 2) != 0) {
@@ -740,11 +796,13 @@ int main(int argc, char **argv)
         return cmd_module_verb("use", argv[2]);
     if (argc == 3 && strcmp(argv[1], "remove") == 0)
         return cmd_module_verb("remove", argv[2]);
+    if (argc == 3 && strcmp(argv[1], "blob") == 0)
+        return cmd_blob(argv[2]);
     if (argc == 4 && strcmp(argv[1], "xap") == 0)
         return cmd_xap(argv[2], argv[3]);
     if (argc >= 3 && strcmp(argv[1], "rgb") == 0)
         return cmd_rgb(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|xap <node> <route-hex>|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|xap <node> <route-hex>|blob <node>|rgb get|set <key=value>...|save>\n");
     return 2;
 }

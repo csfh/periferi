@@ -15,6 +15,7 @@ struct peri_module {
     bool has_usage;    // usage_page and usage given: the match picks one interface
     uint16_t usage_page, usage;
     bool rgb;          // capabilities.rgb
+    uint8_t max_brightness; // limits.max_brightness (1-255), 0 if the module does not give one
 };
 
 // Lowercase letters, digits and '-' (not at either end), 1-48 characters.

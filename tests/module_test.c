@@ -195,6 +195,7 @@ int main(void)
     CHECK(strcmp(m.id, "drop-ctrl-v2") == 0 && strcmp(m.engine, "xap") == 0);
     CHECK(m.vid == 0x359b && m.pid == 0x0009 && m.usage_page == 0xff51 && m.usage == 0x58);
     CHECK(m.rgb);
+    CHECK(m.max_brightness == 191); // from the board's own blob, see the module file
 
     // Ids double as path components: only [a-z0-9-], not at the edges.
     CHECK(peri_module_id_valid("drop-ctrl-v2") && peri_module_id_valid("a"));
@@ -220,6 +221,26 @@ int main(void)
     CHECK(rejected_with("usage = 0x58\n", "", "go together"));
     CHECK(rejected_with("usage_page = 0xff51\nusage = 0x58\n", "", "needs"));
     CHECK(rejected_with("rgb = true", "rgb = 1", "capabilities.rgb"));
+
+    // [limits] max_brightness: optional, 1-255, and 0 means "not given". The shipped CTRL
+    // module carries the board's own limit (rgb_matrix.max_brightness in its config blob).
+    {
+        char text[1024];
+        struct peri_module lim;
+        CHECK(peri_module_parse(good, strlen(good), &lim, err, sizeof err) && lim.max_brightness == 0);
+        snprintf(text, sizeof text, "%s[limits]\nmax_brightness = 191\n", good);
+        CHECK(peri_module_parse(text, strlen(text), &lim, err, sizeof err) && lim.max_brightness == 191);
+        snprintf(text, sizeof text, "%s[limits]\nmax_brightness = 255\n", good);
+        CHECK(peri_module_parse(text, strlen(text), &lim, err, sizeof err) && lim.max_brightness == 255);
+        snprintf(text, sizeof text, "%s[limits]\nmax_brightness = 1\n", good);
+        CHECK(peri_module_parse(text, strlen(text), &lim, err, sizeof err) && lim.max_brightness == 1);
+        const char *bad[] = { "0", "256", "-1", "\"191\"", "191.5", "true" };
+        for (size_t i = 0; i < sizeof bad / sizeof *bad; i++) {
+            snprintf(text, sizeof text, "%s[limits]\nmax_brightness = %s\n", good, bad[i]);
+            CHECK(!peri_module_parse(text, strlen(text), &lim, err, sizeof err));
+            CHECK(strstr(err, "max_brightness") != nullptr);
+        }
+    }
 
     // Not TOML at all, and empty input.
     CHECK(!parses("this is = not [valid", err, sizeof err) && err[0]);

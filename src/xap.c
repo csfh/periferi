@@ -129,6 +129,24 @@ int xap_rgb_get(int fd, struct xap_rgb *cfg)
     return 0;
 }
 
+static constexpr uint8_t route_rgb_effects[] = { 0x06, 0x04, 0x02 };
+
+int xap_rgb_effects(int fd, uint64_t *mask)
+{
+    struct xap_reply reply;
+    if (xap_call(fd, route_rgb_effects, sizeof route_rgb_effects, nullptr, 0, &reply) < 0)
+        return -1;
+    if (!(reply.flags & 0x01) || reply.len < 8) {
+        fprintf(stderr, "peri: reading the effect list failed (flags %02x, %zu bytes)\n",
+                reply.flags, reply.len);
+        return -1;
+    }
+    *mask = 0;
+    for (int i = 7; i >= 0; i--) // little-endian u64
+        *mask = *mask << 8 | reply.payload[i];
+    return 0;
+}
+
 static constexpr uint8_t route_rgb_save[] = { 0x06, 0x04, 0x05 };
 
 int xap_rgb_save(int fd)

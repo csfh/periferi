@@ -6,11 +6,12 @@
 # [match]       which HID interface this module drives. vid and pid are required;
 #               usage_page and usage pick the one interface of the device
 # [capabilities] what the module can do, for the UI and the daemon
+# [limits]      limits the daemon enforces on every write
 
 schema = 1
 id = "drop-ctrl-v2"
 name = "Drop CTRL v2"
-version = "0.1.0"
+version = "0.2.0"
 engine = "xap"
 
 [match]
@@ -21,3 +22,9 @@ usage = 0x58
 
 [capabilities]
 rgb = true
+
+[limits]
+# The board's own brightness limit: rgb_matrix.max_brightness in the configuration blob that the
+# keyboard serves over XAP (`peri blob <node>`, gzip JSON). Read from the board on 2026-10-13, not
+# from memory. The daemon refuses any brightness above it.
+max_brightness = 191

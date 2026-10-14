@@ -29,6 +29,9 @@ struct xap_rgb {
 int xap_rgb_get(int fd, struct xap_rgb *cfg);
 int xap_rgb_set(int fd, const struct xap_rgb *cfg);
 
+// The effects the firmware has enabled, route 0x06 0x04 0x02: a mask where bit n is effect id n.
+int xap_rgb_effects(int fd, uint64_t *mask);
+
 // Persist the keyboard's current rgbmatrix config to its EEPROM (route
 // 0x06 0x04 0x05). Wears flash: only ever call this on an explicit request.
 int xap_rgb_save(int fd);

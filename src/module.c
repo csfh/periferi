@@ -104,6 +104,13 @@ static bool parse_fields(toml_datum_t top, struct peri_module *m, char *err, siz
     if (rgb.type != TOML_UNKNOWN && rgb.type != TOML_BOOLEAN)
         return fail(err, err_size, "'capabilities.rgb' must be true or false");
     m->rgb = rgb.type == TOML_BOOLEAN && rgb.u.boolean;
+
+    toml_datum_t max = toml_seek(top, "limits.max_brightness");
+    if (max.type != TOML_UNKNOWN) {
+        if (max.type != TOML_INT64 || max.u.int64 < 1 || max.u.int64 > 255)
+            return fail(err, err_size, "'limits.max_brightness' must be an integer from 1 to 255");
+        m->max_brightness = (uint8_t)max.u.int64;
+    }
     return true;
 }
 
