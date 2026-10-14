@@ -909,6 +909,27 @@ static int cmd_status(const char *id)
     return forward(req);
 }
 
+// peri look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>]
+//           [brightness=<0-255>]
+// A module keeps two saved looks. get and save only touch the saved file; apply is the one that
+// sends the look to the device.
+static int cmd_look(int argc, char **argv)
+{
+    char req[256] = "look";
+    size_t len = strlen(req);
+    for (int i = 2; i < argc; i++) {
+        int n = snprintf(req + len, sizeof req - len, " %s", argv[i]);
+        if (n < 0 || (size_t)n >= sizeof req - len - 2) {
+            fprintf(stderr, "peri: request too long\n");
+            return 2;
+        }
+        len += (size_t)n;
+    }
+    req[len] = '\n';
+    req[len + 1] = '\0';
+    return forward(req);
+}
+
 // peri set <module-id> brightness=<0-255>
 // peri set <module-id> effect=<none|static|breathing|spectrum> [color=<rrggbb>]
 // The daemon checks every setting. A set may be kept in the device's memory (the Seiren's stored
@@ -964,9 +985,11 @@ int main(int argc, char **argv)
         return cmd_rgb(argc, argv);
     if (argc == 3 && strcmp(argv[1], "status") == 0)
         return cmd_status(argv[2]);
+    if (argc >= 5 && argc <= 8 && strcmp(argv[1], "look") == 0)
+        return cmd_look(argc, argv);
     if (argc >= 4 && argc <= 5 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [brightness=<n>]|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }

@@ -14,6 +14,7 @@
 #include "module.h"
 #include "razer_dev.h"
 #include "scan.h"
+#include "store.h"
 
 static void err(char *reply, size_t size, const char *what, const char *id)
 {
@@ -207,4 +208,165 @@ void set_handle(const char *args, char *reply, size_t size)
         return;
     }
     snprintf(reply, size, "ok module=%s brightness=%u storage=none\n", m.id, now);
+}
+
+// The installed razer module with this id (looked up in the installed directory only), without
+// touching the device. Returns false with an "err ..." reply.
+static bool installed_razer_module(const char *id, struct peri_module *out, char *reply, size_t size)
+{
+    char dir[PATH_MAX];
+    struct peri_module installed[32];
+    size_t count = peri_module_id_valid(id) && peri_installed_dir(dir, sizeof dir)
+                       ? peri_modules_scan(dir, installed, 32) : 0;
+    for (size_t i = 0; i < count; i++)
+        if (strcmp(installed[i].id, id) == 0) {
+            if (strcmp(installed[i].engine, "razer") != 0) {
+                err(reply, size, "this module has no looks", id);
+                return false;
+            }
+            *out = installed[i];
+            return true;
+        }
+    err(reply, size, "no such installed module; run `peri use <id>` (see `peri modules`)", id);
+    return false;
+}
+
+static void reply_look(char *reply, size_t size, const char *id, enum peri_look_which which,
+                       const struct peri_look *l)
+{
+    char brightness[8] = "unset";
+    if (l->brightness >= 0)
+        snprintf(brightness, sizeof brightness, "%d", l->brightness);
+    snprintf(reply, size, "ok module=%s look=%s effect=%s color=%s brightness=%s\n", id,
+             peri_look_which_name(which), l->effect[0] ? l->effect : "unset",
+             l->color[0] ? l->color : "none", brightness);
+}
+
+void look_handle(const char *args, char *reply, size_t size)
+{
+    static const char usage[] = "err usage: look <module-id> get|save|apply <unmuted|muted> "
+                                "[effect=<name>] [color=<rrggbb>] [brightness=<0-255>]\n";
+    char line[192], *rest;
+    snprintf(line, sizeof line, "%s", args);
+    const char *id = strtok_r(line, " \n", &rest);
+    const char *verb = strtok_r(nullptr, " \n", &rest);
+    const char *which_name = strtok_r(nullptr, " \n", &rest);
+    enum peri_look_which which;
+    if (!id || !verb || !peri_look_which_parse(which_name, &which)) {
+        snprintf(reply, size, "%s", usage);
+        return;
+    }
+    bool get = strcmp(verb, "get") == 0, save = strcmp(verb, "save") == 0,
+         apply = strcmp(verb, "apply") == 0;
+    if (!get && !save && !apply) {
+        snprintf(reply, size, "%s", usage);
+        return;
+    }
+
+    // The settings of a save: the whole look, so anything left out is "not set". get and apply
+    // take none.
+    struct peri_look want = PERI_LOOK_EMPTY;
+    for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
+        if (!save) {
+            snprintf(reply, size, "%s", usage);
+            return;
+        }
+        if (strncmp(t, "effect=", 7) == 0 && !want.effect[0]) {
+            if (razer_effect_id(t + 7) < 0 || strlen(t + 7) >= sizeof want.effect) {
+                err(reply, size, "effect must be none, static, breathing or spectrum", id);
+                return;
+            }
+            snprintf(want.effect, sizeof want.effect, "%s", t + 7);
+        } else if (strncmp(t, "color=", 6) == 0 && !want.color[0]) {
+            uint8_t rgb[3];
+            if (!parse_color(t + 6, rgb)) {
+                err(reply, size, "color must be six hex digits, like 0000ff", id);
+                return;
+            }
+            snprintf(want.color, sizeof want.color, "%s", t + 6);
+        } else if (strncmp(t, "brightness=", 11) == 0 && want.brightness < 0) {
+            char *end;
+            unsigned long v = strtoul(t + 11, &end, 10);
+            if (t[11] == '\0' || *end != '\0' || v > 255) {
+                err(reply, size, "brightness must be a whole number from 0 to 255", id);
+                return;
+            }
+            want.brightness = (int)v;
+        } else {
+            snprintf(reply, size, "%s", usage);
+            return;
+        }
+    }
+
+    struct peri_module m;
+    if (!installed_razer_module(id, &m, reply, size))
+        return;
+
+    if (get) {
+        struct peri_look saved = peri_look_load(id, which);
+        reply_look(reply, size, id, which, &saved);
+        return;
+    }
+
+    if (save) {
+        if (want.effect[0] && strcmp(want.effect, "static") == 0 && !want.color[0]) {
+            err(reply, size, "the static effect needs a color=<rrggbb>", id);
+            return;
+        }
+        if (want.brightness >= 0 && (m.max_brightness == 0 || want.brightness > m.max_brightness)) {
+            err(reply, size, "brightness is above the module's limit", id);
+            return;
+        }
+        if (!peri_look_save(id, which, &want)) {
+            err(reply, size, "could not save the look", id);
+            return;
+        }
+        struct peri_look saved = peri_look_load(id, which);
+        reply_look(reply, size, id, which, &saved);
+        return;
+    }
+
+    // apply: the only path here that writes to the device. The saved look is checked again, so
+    // a hand-edited file can never send what `set` would refuse.
+    struct peri_look l = peri_look_load(id, which);
+    if (!l.effect[0] && l.brightness < 0) {
+        err(reply, size, "nothing is saved for this look", id);
+        return;
+    }
+    if (l.brightness >= 0 && (m.max_brightness == 0 || l.brightness > m.max_brightness)) {
+        err(reply, size, "the saved brightness is above the module's limit", id);
+        return;
+    }
+    uint8_t rgb[3];
+    if (strcmp(l.effect, "static") == 0 && !parse_color(l.color, rgb)) {
+        err(reply, size, "the saved colour is not valid", id);
+        return;
+    }
+
+    struct peri_module dev;
+    int fd = open_module_device(id, &dev, reply, size);
+    if (fd < 0)
+        return;
+    if (l.effect[0]
+        && razer_set_effect(fd, RAZER_STORE_NONE, (uint8_t)razer_effect_id(l.effect),
+                            l.color[0] ? rgb : nullptr) != 0) {
+        close(fd);
+        err(reply, size, "the device did not accept the effect; nothing else was sent", id);
+        return;
+    }
+    uint8_t now = 0;
+    if (l.brightness >= 0
+        && (razer_set_brightness(fd, RAZER_STORE_NONE, (uint8_t)l.brightness) != 0
+            || razer_brightness(fd, RAZER_STORE_NONE, &now) != 0)) {
+        close(fd);
+        err(reply, size, l.effect[0] ? "the effect was applied but the device did not accept the brightness"
+                                     : "the device did not accept the brightness", id);
+        return;
+    }
+    close(fd);
+    char shown[8] = "-";
+    if (l.brightness >= 0)
+        snprintf(shown, sizeof shown, "%u", now);
+    snprintf(reply, size, "ok module=%s applied=%s effect=%s brightness=%s\n", id,
+             peri_look_which_name(which), l.effect[0] ? l.effect : "-", shown);
 }

@@ -186,6 +186,12 @@ static void handle(int client)
         (void)!write(client, reply, strlen(reply));
         return;
     }
+    if (strncmp(req, "look ", 5) == 0) {
+        char reply[256];
+        look_handle(req + 5, reply, sizeof reply);
+        (void)!write(client, reply, strlen(reply));
+        return;
+    }
     if (strncmp(req, "status ", 7) == 0 || strncmp(req, "set ", 4) == 0) {
         char reply[256];
         if (req[0] == 's' && req[1] == 't')
