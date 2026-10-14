@@ -193,12 +193,6 @@ function lookText(look) {
   return "Saved: " + parts.join(", ")
 }
 
-// What Apply sends, in words, for the line beside the button.
-function applyText(which) {
-  return "Sends the " + lookLabel(which).toLowerCase() + " to the microphone now, "
-    + "whatever its mute state."
-}
-
 // --- audio: the microphone's standard USB audio controls (`peri audio`) -----------------------
 // Levels are 0-100 over each control's own range. They are live settings of the sound card, not
 // stored by peri, so unlike a look they are applied as soon as a slider is released.

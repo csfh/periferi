@@ -199,8 +199,6 @@ TestCase {
     compare(Mic.lookLabel("unmuted"), "Unmuted look")
     compare(Mic.lookLabel("muted"), "Muted look")
     compare(Mic.lookLabel("other"), "")
-    verify(Mic.applyText("muted").indexOf("muted look") >= 0)
-    verify(Mic.applyText("muted").indexOf("whatever its mute state") >= 0)
   }
 
   function test_fixed_lists() {

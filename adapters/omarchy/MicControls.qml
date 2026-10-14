@@ -195,7 +195,6 @@ Column {
     spacing: Style.space(12)
 
     Button {
-      id: applyButton
       width: Style.space(170)
       bordered: true
       enabled: root.peri.canApply
@@ -204,9 +203,10 @@ Column {
       onClicked: root.peri.apply()
     }
     Caption {
-      width: parent.width - applyButton.width - parent.spacing
       anchors.verticalCenter: parent.verticalCenter
-      text: Mic.applyText(root.peri.editing)
+      visible: root.peri.notice !== ""
+      width: parent.width - Style.space(170) - parent.spacing
+      text: root.peri.notice
     }
   }
 
@@ -277,22 +277,6 @@ Column {
       }
     }
   }
-  Caption {
-    text: "These are the sound card's own levels. They apply as soon as you let go of a slider. "
-      + "The dial on the microphone has its own setting, and how it relates to these is not known."
-  }
-
-  Caption {
-    visible: root.peri.notice !== ""
-    text: root.peri.notice
-  }
-
-  Caption {
-    text: "Editing a look only saves it. The microphone cannot report its colour or effect, so "
-      + "the highlights are your saved settings, not what it is showing. Apply sends the look, and "
-      + "the microphone may keep it in its own memory."
-  }
-
   Text {
     visible: root.peri.error !== ""
     width: parent.width
