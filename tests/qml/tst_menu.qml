@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import "../../quickshell/peri/menu.js" as Menu
+import "../../quickshell/peri/cli.js" as Cli
 
 TestCase {
   name: "menu"
@@ -126,6 +127,18 @@ TestCase {
     compare(m.managed[0].setup, false)
   }
 
+  // The right-hand pane shows one managed device: the chosen one, else the first.
+  function test_select_entry() {
+    var list = [{ key: "a", name: "A" }, { key: "b", name: "B" }]
+    compare(Menu.selectEntry(list, "b").name, "B")
+    compare(Menu.selectEntry(list, "a").name, "A")
+    compare(Menu.selectEntry(list, "gone").name, "A")   // removed or unplugged: fall back to the first
+    compare(Menu.selectEntry(list, "").name, "A")
+    compare(Menu.selectEntry(list, undefined).name, "A")
+    compare(Menu.selectEntry([], "a"), null)
+    compare(Menu.selectEntry(null, "a"), null)
+  }
+
   function test_parse() {
     compare(Menu.parse("[]"), [])
     compare(Menu.parse('[{"a": 1}]').length, 1)
@@ -138,11 +151,11 @@ TestCase {
   // The id is its own argv element after the script, so it can never be shell code.
   function test_command_keeps_arguments_separate() {
     var hostile = "x; rm -rf ~ $(touch /tmp/pwned) `id`"
-    var c = Menu.command("/home/u/.local/bin/peri", ["use", hostile])
+    var c = Cli.command("/home/u/.local/bin/peri", ["use", hostile])
     compare(c.slice(0, 2), ["sh", "-c"])
     compare(c.slice(3), ["sh", "/home/u/.local/bin/peri", "use", hostile])
     verify(c[2].indexOf("rm -rf") < 0 && c[2].indexOf("pwned") < 0)
     verify(c[2].indexOf("\"$@\"") >= 0)
-    compare(c[2], Menu.command("/other", ["remove", "y"])[2]) // the script never varies
+    compare(c[2], Cli.command("/other", ["remove", "y"])[2]) // the script never varies
   }
 }

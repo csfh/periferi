@@ -21,6 +21,14 @@ function byName(a, b) {
   return String(a.key) < String(b.key) ? -1 : String(a.key) > String(b.key) ? 1 : 0
 }
 
+// The entry a detail pane shows: the one with this key, else the first, else null.
+function selectEntry(list, key) {
+  if (!Array.isArray(list) || list.length === 0) return null
+  for (var i = 0; i < list.length; i++)
+    if (list[i].key === key) return list[i]
+  return list[0]
+}
+
 // `peri setup` has to update the udev rule before this installed module's device is covered.
 // (The device may well work already: today's rule is broader. Only the new rule is missing.)
 function needsSetup(module) {
@@ -77,12 +85,4 @@ function build(devices, modules) {
     installable: installable.sort(byName),
     unmanaged: unmanaged.sort(byName)
   }
-}
-
-// The argv for running peri: ["use", "drop-ctrl-v2"] -> a command for Process. peri is
-// found at periPath, or else on PATH. The arguments are separate argv elements read
-// through "$@", never pasted into the script, so no argument can be taken as shell code.
-function command(periPath, args) {
-  return ["sh", "-c", "p=\"$1\"; [ -x \"$p\" ] || p=peri; shift; exec \"$p\" \"$@\"",
-          "sh", periPath].concat(args)
 }

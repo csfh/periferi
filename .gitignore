@@ -1,2 +1,5 @@
 build/
 build-check/
+tests/qml/omarchy-preview/Commons
+tests/qml/omarchy-preview/Ui
+tests/qml/omarchy-preview/services

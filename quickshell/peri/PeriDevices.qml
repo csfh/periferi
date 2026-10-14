@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "menu.js" as Menu
+import "cli.js" as Cli
 
 // Every HID peripheral, sorted into what a device menu shows. Like PeriLighting it works in
 // any Quickshell config, imports nothing from the host shell and draws nothing; hosts bind
@@ -41,7 +42,7 @@ Scope {
   function refresh() {
     if (busy) { state.pending = true; return }
     state.refreshing = true
-    lister.command = Menu.command(root.periPath, ["list", "--json"])
+    lister.command = Cli.command(root.periPath, ["list", "--json"])
     lister.running = true
   }
 
@@ -60,7 +61,7 @@ Scope {
     state.actionOut = ""
     state.actionErr = ""
     settleTimer.stop()
-    actor.command = Menu.command(root.periPath, [verb, String(id)])
+    actor.command = Cli.command(root.periPath, [verb, String(id)])
     actor.running = true
   }
 
@@ -116,7 +117,7 @@ Scope {
         var list = Menu.parse(this.text)
         if (list === null) { root.finish("could not read the device list"); return }
         state.staged = list
-        modulesReader.command = Menu.command(root.periPath, ["modules", "--json"])
+        modulesReader.command = Cli.command(root.periPath, ["modules", "--json"])
         modulesReader.running = true
       }
     }
