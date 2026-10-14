@@ -16,6 +16,7 @@
 #include "common.h"
 #include "json.h"
 #include "module.h"
+#include "razer90_dev.h"
 #include "razer_dev.h"
 #include "razer_scan.h"
 #include "scan.h"
@@ -657,6 +658,49 @@ static int cmd_razer(const char *arg, const char *query)
     return reply.status == RAZER_STATUS_OK ? 0 : 1;
 }
 
+// The one query `peri razer90` may send to the DeathAdder: firmware get (class 0x00, command
+// 0x81, size 2), a read. Nothing that sets a mode, a DPI or lighting is on it.
+// Prints the raw bytes first, so a reply that does not decode can be told from a wrong frame.
+static int cmd_razer90(const char *arg, const char *query)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+    if (strcmp(query, "firmware")) {
+        fprintf(stderr, "peri: unknown razer90 query '%s' (known: firmware)\n", query);
+        return 2;
+    }
+    if (!node_allowed(name, false))
+        return 1;
+
+    int fd = razer90_open(name);
+    if (fd < 0)
+        return 1;
+    struct razer90_reply reply;
+    uint8_t raw[RAZER90_HIDRAW_LEN];
+    int got;
+    int rc = razer90_call(fd, 0x00, 0x81, 2, nullptr, &reply, raw, &got);
+    close(fd);
+
+    if (got > 0) {
+        printf("raw %d bytes:", got);
+        for (int i = 0; i < got && i < RAZER90_HIDRAW_LEN; i++)
+            printf(" %02x", raw[i]);
+        putchar('\n');
+    } else {
+        printf("raw none (last get feature returned %d bytes)\n", got);
+    }
+    if (rc < 0) {
+        printf("failed %d\n", rc);
+        return 1;
+    }
+    printf("status %02x %zu", reply.status, reply.len);
+    for (size_t i = 0; i < reply.len; i++)
+        printf(" %02x", reply.args[i]);
+    putchar('\n');
+    return reply.status == RAZER_STATUS_OK ? 0 : 1;
+}
+
 // Read-only XAP queries that take no request payload. This is an allowlist on
 // purpose: secure routes (bootloader jump, EEPROM reset, remapping) are never
 // on it, so `peri xap` cannot send them.
@@ -1121,6 +1165,9 @@ int main(int argc, char **argv)
     if (argc == 4 && strcmp(argv[1], "razer") == 0)
         return cmd_razer(argv[2], argv[3]);
 
+    if (argc == 4 && strcmp(argv[1], "razer90") == 0)
+        return cmd_razer90(argv[2], argv[3]);
+
     if (argc >= 2 && strcmp(argv[1], "modules") == 0)
         return cmd_modules(argc, argv);
     if (argc == 3 && strcmp(argv[1], "use") == 0)
@@ -1144,6 +1191,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|razer90 <node> firmware|xap <node> <route-hex>|blob <node>|status <module-id>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }

@@ -23,7 +23,7 @@ target_compile_options(tomlc17 PRIVATE -w)
 
 find_package(ALSA REQUIRED)
 
-add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/fsutil.c src/scan.c src/xap.c src/razer.c src/razer_scan.c src/razer_dev.c)
+add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/fsutil.c src/scan.c src/xap.c src/razer.c src/razer_scan.c src/razer_dev.c src/razer90.c src/razer90_dev.c)
 add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/fsutil.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/device_cmd.c src/audio.c src/store.c src/controls.c src/follow.c src/razer.c src/razer_dev.c)
 target_link_libraries(peri PRIVATE tomlc17)
 target_link_libraries(perid PRIVATE tomlc17 ALSA::ALSA)
