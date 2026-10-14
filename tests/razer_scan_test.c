@@ -126,6 +126,35 @@ int main(void)
     razer_describe(&s.found[1], line, sizeof line);
     CHECK(strstr(line, "reply") && strstr(line, "status=02") && strstr(line, "args=01 01"));
 
+    // A new variant of a known command is not the same as the known one: two effect-set frames
+    // that differ only in the LED id (the second argument byte) are different variants.
+    uint8_t led0[6] = { 1, 0, 2, 0, 0, 0 }, led5[6] = { 1, 5, 2, 0, 0, 0 };
+    struct razer_found a = { .request_crc = true }, b = { .request_crc = true }, c = { .request_crc = false };
+    razer_encode(a.frame, 0x52, 0x0f, 0x02, led0, 6);
+    razer_encode(b.frame, 0x52, 0x0f, 0x02, led5, 6);
+    memcpy(c.frame, a.frame, RAZER_REPORT_LEN);
+    CHECK(razer_same_command(&a, &b) && !razer_same_variant(&a, &b));
+    CHECK(razer_same_variant(&a, &a));
+    CHECK(!razer_same_command(&a, &c));                       // the same bytes seen as a reply
+    uint8_t fw2[2] = { 0, 0 };
+    struct razer_found d = { .request_crc = true };
+    razer_encode(d.frame, 0x52, 0x00, 0x81, fw2, 2);
+    CHECK(!razer_same_command(&a, &d));
+
+    // `tshark -V -x` numbers every packet ("Frame 12: ...") and prints a hex block per data source;
+    // the capture's own number is used, and the same frame in two blocks is reported once.
+    static char dump2[8192];
+    uint8_t one[RAZER_REPORT_LEN];
+    razer_encode(one, 0x52, 0x00, 0x81, fw2, 2);
+    strcat(dump2, "Frame 12: 91 bytes on wire (728 bits), 91 bytes captured\n    Encapsulation type: USB\n\n");
+    add_packet(dump2, sizeof dump2, one, sizeof one);
+    add_packet(dump2, sizeof dump2, one, sizeof one);        // a second block for the same packet
+    strcat(dump2, "Frame 13: 91 bytes on wire (728 bits), 91 bytes captured\n\n");
+    add_packet(dump2, sizeof dump2, one, sizeof one);
+    struct seen numbered = { 0 };
+    CHECK(razer_scan_dump(dump2, collect, &numbered) == 2);
+    CHECK(numbered.found[0].packet == 12 && numbered.found[1].packet == 13);
+
     // Text that is not a dump finds nothing and does no harm.
     struct seen none = { 0 };
     CHECK(razer_scan_dump("", collect, &none) == 0);

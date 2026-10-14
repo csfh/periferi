@@ -929,31 +929,37 @@ static void decode_collect(const struct razer_found *found, void *user)
         s->frames[s->count++] = *found;
 }
 
-// The distinct commands, each once with how often it was seen and a sample, new ones flagged.
+// The distinct frames, each once with how often it was seen and a sample. A frame is distinct by its
+// command, direction, size and first two arguments (storage and LED id for lighting), so a new
+// variant of a known command is listed on its own and counted apart from a new command.
 static void decode_summary(const struct decode_state *s)
 {
-    size_t unknown = 0;
+    size_t unknown = 0, variants = 0;
     for (size_t i = 0; i < s->count; i++) {
         const struct razer_found *f = &s->frames[i];
-        bool seen = false;
-        for (size_t j = 0; j < i && !seen; j++)
-            seen = s->frames[j].frame[7] == f->frame[7] && s->frames[j].frame[8] == f->frame[8]
-                   && s->frames[j].request_crc == f->request_crc;
+        bool seen = false, command_seen = false;
+        for (size_t j = 0; j < i; j++) {
+            seen = seen || razer_same_variant(&s->frames[j], f);
+            command_seen = command_seen || razer_same_command(&s->frames[j], f);
+        }
         if (seen)
             continue;
         size_t times = 0;
         for (size_t j = i; j < s->count; j++)
-            if (s->frames[j].frame[7] == f->frame[7] && s->frames[j].frame[8] == f->frame[8]
-                && s->frames[j].request_crc == f->request_crc)
+            if (razer_same_variant(&s->frames[j], f))
                 times++;
         char line[320];
         razer_describe(f, line, sizeof line);
-        printf("%4zux  %s\n", times, line);
-        if (!razer_command_name(f->frame[7], f->frame[8]))
+        bool known = razer_command_name(f->frame[7], f->frame[8]) != nullptr;
+        printf("%4zux  %s%s\n", times, line, known && command_seen ? "   <- new variant" : "");
+        if (!known && !command_seen)
             unknown++;
+        else if (command_seen)
+            variants++;
     }
-    printf("%zu frame%s, %zu command%s we do not know yet\n", s->count, s->count == 1 ? "" : "s",
-           unknown, unknown == 1 ? "" : "s");
+    printf("%zu frame%s, %zu command%s we do not know yet, %zu more variant%s of commands already listed\n",
+           s->count, s->count == 1 ? "" : "s", unknown, unknown == 1 ? "" : "s", variants,
+           variants == 1 ? "" : "s");
 }
 
 // peri decode <hex bytes>           describe one frame (64 bytes, report id 07 first)

@@ -11,6 +11,18 @@ static const struct { uint8_t cls, cmd; const char *name; } known[] = {
     { 0x0f, 0x04, "brightness set" },  { 0x0f, 0x84, "brightness get" },
 };
 
+bool razer_same_command(const struct razer_found *a, const struct razer_found *b)
+{
+    return a->frame[7] == b->frame[7] && a->frame[8] == b->frame[8]
+           && a->request_crc == b->request_crc;
+}
+
+bool razer_same_variant(const struct razer_found *a, const struct razer_found *b)
+{
+    return razer_same_command(a, b) && a->frame[6] == b->frame[6] && a->frame[9] == b->frame[9]
+           && a->frame[10] == b->frame[10];
+}
+
 const char *razer_command_name(uint8_t cls, uint8_t cmd)
 {
     for (size_t i = 0; i < sizeof known / sizeof *known; i++)
@@ -57,17 +69,42 @@ static size_t line_bytes(const char *line, size_t len, uint8_t out[16])
     return n;
 }
 
+// The frames already reported for the current packet number: `tshark -V -x` prints more than one
+// hex block for a packet (one per data source), and the same frame must not be reported twice.
+struct reported {
+    size_t packet;
+    size_t count;
+    uint8_t frames[8][RAZER_REPORT_LEN];
+};
+
+static bool already(const struct reported *r, const uint8_t *frame)
+{
+    for (size_t i = 0; i < r->count; i++)
+        if (memcmp(r->frames[i], frame, RAZER_REPORT_LEN) == 0)
+            return true;
+    return false;
+}
+
 // Report every frame in one packet's bytes.
-static size_t scan_packet(const uint8_t *p, size_t len, size_t packet, razer_found_cb cb, void *user)
+static size_t scan_packet(const uint8_t *p, size_t len, size_t packet, struct reported *done,
+                          razer_found_cb cb, void *user)
 {
     size_t found = 0;
+    if (done->packet != packet) {
+        done->packet = packet;
+        done->count = 0;
+    }
     for (size_t i = 0; i + RAZER_REPORT_LEN <= len;) {
         const uint8_t *f = p + i;
         bool req = f[0] == RAZER_REPORT_ID && f[1] == 0x00 && f[6] <= RAZER_REQUEST_ARGS_MAX
                    && xor_range(f, 1, 62) == f[63];
         bool rep = f[0] == RAZER_REPORT_ID && f[6] <= RAZER_REPLY_ARGS_MAX && f[1] != 0x00
                    && xor_range(f, 2, 61) == f[62];
-        if (req || rep) {
+        if ((req || rep) && already(done, f)) {
+            i += RAZER_REPORT_LEN;
+        } else if (req || rep) {
+            if (done->count < 8)
+                memcpy(done->frames[done->count++], f, RAZER_REPORT_LEN);
             struct razer_found out = { .packet = packet, .request_crc = req, .reply_crc = rep };
             memcpy(out.frame, f, RAZER_REPORT_LEN);
             cb(&out, user);
@@ -83,8 +120,10 @@ static size_t scan_packet(const uint8_t *p, size_t len, size_t packet, razer_fou
 size_t razer_scan_dump(const char *text, razer_found_cb cb, void *user)
 {
     uint8_t packet[65536];
-    size_t len = 0, number = 0, found = 0;
+    size_t len = 0, number = 0, found = 0, frame_no = 0;
     bool open = false;
+    static struct reported done;
+    done = (struct reported){ .packet = (size_t)-1 };
 
     const char *p = text;
     while (*p) {
@@ -95,7 +134,7 @@ size_t razer_scan_dump(const char *text, razer_found_cb cb, void *user)
         if (n > 0) {
             if (!open) {
                 open = true;
-                number++;
+                number = frame_no ? frame_no : number + 1;
                 len = 0;
             }
             if (len + n <= sizeof packet) {
@@ -103,13 +142,19 @@ size_t razer_scan_dump(const char *text, razer_found_cb cb, void *user)
                 len += n;
             }
         } else if (open && line_len == 0) { // a blank line ends the packet
-            found += scan_packet(packet, len, number, cb, user);
+            found += scan_packet(packet, len, number, &done, cb, user);
             open = false;
+        } else if (!open && line_len > 6 && strncmp(p, "Frame ", 6) == 0) {
+            // `tshark -V` starts every packet with "Frame 123: ...": that is the capture's own number.
+            char *endp;
+            unsigned long v = strtoul(p + 6, &endp, 10);
+            if (endp != p + 6 && *endp == ':')
+                frame_no = v;
         }
         p += line_len + (end ? 1 : 0);
     }
     if (open)
-        found += scan_packet(packet, len, number, cb, user);
+        found += scan_packet(packet, len, number, &done, cb, user);
     return found;
 }
 

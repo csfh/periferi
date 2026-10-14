@@ -23,6 +23,11 @@ int peri_audio_card(unsigned vid, unsigned pid);
 long peri_audio_pct_to_raw(int pct, long min, long max);
 int peri_audio_raw_to_pct(long raw, long min, long max);
 
+// Move every channel of a control by the amount that takes channel 0 from old[0] to new0, so a
+// deliberate left/right difference survives. Each channel is clamped to [min, max], so at an
+// extreme the difference narrows. Writes n values to out.
+void peri_audio_shift(const long *old, int n, long new0, long min, long max, long *out);
+
 // Read a control: a level 0-100, or 0/1 for the switch. False if the card or control is missing.
 bool peri_audio_get(int card, enum peri_audio_ctl ctl, int *value);
 

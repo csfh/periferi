@@ -43,6 +43,15 @@ int peri_audio_raw_to_pct(long raw, long min, long max)
     return (int)(((raw - min) * 100 + (max - min) / 2) / (max - min));
 }
 
+void peri_audio_shift(const long *old, int n, long new0, long min, long max, long *out)
+{
+    long delta = n > 0 ? new0 - old[0] : 0;
+    for (int ch = 0; ch < n; ch++) {
+        long v = old[ch] + delta;
+        out[ch] = v < min ? min : v > max ? max : v;
+    }
+}
+
 static const char *ctl_name(enum peri_audio_ctl ctl)
 {
     switch (ctl) {
@@ -117,13 +126,19 @@ bool peri_audio_set(int card, enum peri_audio_ctl ctl, int value)
     snd_ctl_elem_value_set_id(val, id);
     if (snd_ctl_elem_info(handle, info) >= 0 && snd_ctl_elem_read(handle, val) >= 0) {
         unsigned count = snd_ctl_elem_info_get_count(info);
-        for (unsigned ch = 0; ch < count; ch++) {
-            if (is_switch(ctl))
+        if (is_switch(ctl)) {
+            for (unsigned ch = 0; ch < count; ch++)
                 snd_ctl_elem_value_set_boolean(val, ch, value != 0);
-            else
-                snd_ctl_elem_value_set_integer(val, ch,
-                    peri_audio_pct_to_raw(value, snd_ctl_elem_info_get_min(info),
-                                          snd_ctl_elem_info_get_max(info)));
+        } else {
+            // Levels keep the difference between channels (a balance the user set on purpose).
+            long old[8], moved[8];
+            int n = count < 8 ? (int)count : 8;
+            for (int ch = 0; ch < n; ch++)
+                old[ch] = snd_ctl_elem_value_get_integer(val, (unsigned)ch);
+            long min = snd_ctl_elem_info_get_min(info), max = snd_ctl_elem_info_get_max(info);
+            peri_audio_shift(old, n, peri_audio_pct_to_raw(value, min, max), min, max, moved);
+            for (int ch = 0; ch < n; ch++)
+                snd_ctl_elem_value_set_integer(val, (unsigned)ch, moved[ch]);
         }
         ok = snd_ctl_elem_write(handle, val) >= 0;
     }

@@ -13,7 +13,8 @@
 // published: every frame is named if it is a command we know, and "unknown" if not.
 
 struct razer_found {
-    size_t packet;            // which dump block (packet) it was in, from 1
+    size_t packet;            // the capture's frame number if the dump has "Frame N:" lines
+                              // (tshark -V -x), else which hex block it was in, from 1
     uint8_t frame[RAZER_REPORT_LEN];
     bool request_crc;         // the checksum fits the request rule (byte 63)
     bool reply_crc;           // the checksum fits the reply rule (byte 62)
@@ -25,6 +26,13 @@ typedef void (*razer_found_cb)(const struct razer_found *found, void *user);
 // four-digit offset). Calls cb for each frame found; returns how many. A packet may hold more than
 // one frame; a frame is never reported twice.
 size_t razer_scan_dump(const char *text, razer_found_cb cb, void *user);
+
+// Do two found frames carry the same command (class, command, request or reply)? And the same
+// variant: the same command with the same data size and the same first two argument bytes (for
+// the lighting commands, the storage and LED id)? A new variant of a known command is easy to
+// miss when a summary folds it into the known one.
+bool razer_same_command(const struct razer_found *a, const struct razer_found *b);
+bool razer_same_variant(const struct razer_found *a, const struct razer_found *b);
 
 // "firmware get", "effect set", ... or nullptr if (class, command) is not one we know.
 const char *razer_command_name(uint8_t cls, uint8_t cmd);
