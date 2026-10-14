@@ -162,13 +162,16 @@ void razer_describe(const struct razer_found *found, char *out, size_t size)
 {
     const uint8_t *f = found->frame;
     const char *name = razer_command_name(f[7], f[8]);
-    int n = snprintf(out, size, "%s txn=%02x class=%02x cmd=%02x (%s) size=%02x", 
+    if (size == 0)
+        return;
+    int n = snprintf(out, size, "%s txn=%02x class=%02x cmd=%02x (%s) size=%02x",
                      found->request_crc ? "request" : "reply  ", f[2], f[7], f[8],
                      name ? name : "UNKNOWN", f[6]);
-    if (!found->request_crc)
+    if (n > 0 && (size_t)n < size && !found->request_crc)
         n += snprintf(out + n, size - (size_t)n, " status=%02x", f[1]);
-    n += snprintf(out + n, size - (size_t)n, " args=");
-    for (size_t i = 0; i < f[6] && i < 54 && (size_t)n + 4 < size; i++)
+    if (n > 0 && (size_t)n < size)
+        n += snprintf(out + n, size - (size_t)n, " args=");
+    for (size_t i = 0; i < f[6] && i < 54 && n > 0 && (size_t)n + 4 < size; i++)
         n += snprintf(out + n, size - (size_t)n, "%s%02x", i ? " " : "", f[9 + i]);
 }
 

@@ -57,7 +57,10 @@ int razer_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t
         return RAZER_ERR_IO;
     }
 
-    // The device answers a moment later; keep asking until it does (or says busy no more).
+    // The device answers a moment later; keep asking until it does (or says busy no more). The first
+    // read can still hold the answer to an earlier request (they all share one transaction id), which
+    // names another command: that is not ours, so wait for ours. If ours never comes, say what was seen.
+    int last = RAZER_ERR_NO_REPLY;
     for (int attempt = 0; attempt < 50; attempt++) {
         nanosleep(&(struct timespec){ .tv_nsec = 20 * 1000 * 1000 }, nullptr);
         uint8_t buf[RAZER_REPORT_LEN] = { RAZER_REPORT_ID };
@@ -68,11 +71,15 @@ int razer_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t
         if (n != RAZER_REPORT_LEN)
             continue;
         rc = razer_decode(buf, cls, cmd, reply);
+        if (rc == RAZER_ERR_MISMATCH) {
+            last = rc;
+            continue;
+        }
         if (rc == 0 && reply->status == RAZER_STATUS_BUSY)
             continue;
         return rc;
     }
-    return RAZER_ERR_NO_REPLY;
+    return last;
 }
 
 static uint8_t last_status;

@@ -197,8 +197,12 @@ Scope {
     property string which: "unmuted"
     stdout: StdioCollector {
       onStreamFinished: {
+        // The answer says which look it is (`look unmuted`), so one that arrives after the next
+        // save has started can never land on the wrong look.
+        var which = L.parseValues(this.text).look
         var look = M.parseLook(this.text)
-        if (look !== null && state.pending === null) root.setLook(saver.which, look)
+        if (look !== null && (which === "unmuted" || which === "muted") && state.pending === null)
+          root.setLook(which, look)
       }
     }
     stderr: StdioCollector {

@@ -141,7 +141,7 @@ static const char effect_names[] =
 static bool effect_opts(const char *name, const char *color, const char *color2,
                         struct razer_effect_opts *opts, int *effect)
 {
-    bool reverse;
+    bool reverse = false;
     *effect = razer_effect_lookup(name, &reverse);
     *opts = (struct razer_effect_opts){ .reverse = reverse };
     if (*effect < 0 || (color2 && !color))
@@ -163,7 +163,7 @@ void set_handle(const char *args, char *reply, size_t size)
 {
     static const char usage[] = "err usage: set <module-id> brightness=<0-255> | effect=<name> "
                                 "[color=<rrggbb>] [color2=<rrggbb>]\n";
-    char line[128], *rest;
+    char line[256], *rest; // the daemon reads at most 255 bytes: never cut a request short
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
     if (!id) {
@@ -299,7 +299,7 @@ void look_handle(const char *args, char *reply, size_t size)
 {
     static const char usage[] = "err usage: look <module-id> get|save|apply <unmuted|muted> "
                                 "[effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [brightness=<0-255>]\n";
-    char line[224], *rest;
+    char line[256], *rest; // as above
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
     const char *verb = strtok_r(nullptr, " \n", &rest);
@@ -467,7 +467,7 @@ void audio_handle(const char *args, char *reply, size_t size)
 {
     static const char usage[] = "err usage: audio <module-id> get | set gain=<0-100> monitor=<0-100> "
                                 "monitor_on=<yes|no> headphones=<0-100>\n";
-    char line[160], *rest;
+    char line[256], *rest; // as above
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
     const char *verb = strtok_r(nullptr, " \n", &rest);

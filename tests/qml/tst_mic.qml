@@ -270,4 +270,13 @@ TestCase {
     compare(Mic.withAudio(null, "gain", 5).gain, 5)
     compare(Mic.withAudio(null, "gain", 5).monitorOn, null)
   }
+
+  // An effect never seen on the mic says so on its button; the verified ones do not.
+  function test_untested_effects_are_labelled() {
+    compare(Mic.effectLabel(Mic.effects.filter(function(e) { return e.id === "wave" })[0]), "Wave (untested)")
+    compare(Mic.effectLabel(Mic.effects.filter(function(e) { return e.id === "static" })[0]), "Colour")
+    compare(Mic.effectLabel(Mic.effects.filter(function(e) { return e.id === "none" })[0]), "Off")
+    compare(Mic.effects.filter(function(e) { return e.untested }).map(function(e) { return e.id }),
+            ["wave", "wave-reverse"])
+  }
 }

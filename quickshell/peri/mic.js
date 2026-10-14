@@ -20,15 +20,17 @@ var looks = [
   { id: "muted", label: "Muted look" }
 ]
 
-// The effect buttons. `colors` is how many colours the effect takes (0, 1 or 2): "static" needs
+// The effect buttons. `untested` marks an effect built from the public keyboard documentation that
+// has never been seen working on this microphone (the mic answers "ok" to frames it does not act on,
+// and starlight and wheel, built the same way, showed black). `colors` is how many colours the effect takes (0, 1 or 2): "static" needs
 // its one, "breathing" may have none (random colours), one or two. The highlighted
 // button is the one saved in the look being edited.
 var effects = [
   { id: "static", label: "Colour", colors: 1 },
   { id: "breathing", label: "Breathing", colors: 2 },
   { id: "spectrum", label: "Spectrum", colors: 0 },
-  { id: "wave", label: "Wave", colors: 0 },
-  { id: "wave-reverse", label: "Wave, other way", colors: 0 },
+  { id: "wave", label: "Wave", colors: 0, untested: true },
+  { id: "wave-reverse", label: "Wave, other way", colors: 0, untested: true },
   { id: "none", label: "Off", colors: 0 }
 ]
 
@@ -251,3 +253,6 @@ function withAudio(current, key, value) {
   a[key] = Math.max(0, Math.min(100, isFinite(n) ? n : 0))
   return a
 }
+
+// The label a button shows: the effect's name, and "(untested)" for one not yet seen working.
+function effectLabel(e) { return e.untested ? e.label + " (untested)" : e.label }
