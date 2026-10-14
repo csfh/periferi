@@ -58,17 +58,36 @@ struct razer_reply {
 enum razer_effect {
     RAZER_EFFECT_NONE = 0x00,
     RAZER_EFFECT_STATIC = 0x01,
-    RAZER_EFFECT_BREATHING = 0x02, // pulses; random colours unless one colour is given
+    RAZER_EFFECT_BREATHING = 0x02, // pulses; random colours, or one or two chosen colours
     RAZER_EFFECT_SPECTRUM = 0x03,  // cycles through all colours without pulsing
+    RAZER_EFFECT_WAVE = 0x04,      // a wave that runs round the ring, in one of two directions
+    RAZER_EFFECT_STARLIGHT = 0x07, // twinkling points; random colours, or one or two chosen colours
+    RAZER_EFFECT_WHEEL = 0x0a,     // a spinning wheel, in one of two directions
 };
-#define RAZER_EFFECT_ARGS_MAX 9
+#define RAZER_EFFECT_ARGS_MAX 12
 
-// The effect for a name ("none", "static", "breathing", "spectrum"), or -1.
+// The parameters an effect may take. colors is how many of rgb[] are used (0, 1 or 2).
+struct razer_effect_opts {
+    uint8_t colors;
+    uint8_t rgb[2][3];
+    uint8_t reverse;  // wave and wheel: 0 or 1, which way round (which is which is not established)
+    uint8_t speed;    // starlight only, 1-3; 0 means the middle one
+};
+
+// The effect for a name: "none", "static", "breathing", "spectrum", "wave", "wave-reverse",
+// "starlight", "wheel", "wheel-reverse". Returns the effect id (or -1) and, if `reverse` is not
+// null, whether the name is a reversed one.
+int razer_effect_lookup(const char *name, bool *reverse);
 int razer_effect_id(const char *name);
 
-// The arguments of an effect set: variable storage, LED id 0, the effect, then its parameters.
-// `rgb` (3 bytes) is required for static and optional for breathing; the other effects ignore it.
-// Returns the data size (6 or 9), or 0 if the effect is unknown or lacks its colour.
+// Build the arguments of an effect set (class 0x0f, command 0x02): variable storage, LED id 0,
+// the effect, then its parameters. Returns the data size (6, 9 or 12), or 0 for an unknown effect
+// or one that lacks what it needs (static needs a colour; a colour beyond `colors` is ignored).
+size_t razer_effect_build(uint8_t storage, uint8_t effect, const struct razer_effect_opts *opts,
+                          uint8_t args[RAZER_EFFECT_ARGS_MAX]);
+
+// The same for the effects with at most one colour: `rgb` (3 bytes) is required for static and
+// optional for breathing and starlight; the other effects ignore it.
 size_t razer_effect_args(uint8_t storage, uint8_t effect, const uint8_t rgb[3],
                          uint8_t args[RAZER_EFFECT_ARGS_MAX]);
 

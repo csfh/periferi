@@ -106,6 +106,62 @@ int main(void)
     check(razer_effect_args(1, RAZER_EFFECT_STATIC, nullptr, a) == 0, "static needs a colour");
     check(razer_effect_args(1, 0x7f, red, a) == 0, "unknown effect");
 
+    // The other effects, laid out as in the reference's documented examples. Their effect ids are
+    // from the same place: they have not been seen to work on the microphone.
+    struct razer_effect_opts o = { 0 };
+    const uint8_t want_wave[6] = { 1, 0, 4, 0, 0x28, 0 }, want_wave_r[6] = { 1, 0, 4, 1, 0x28, 0 };
+    const uint8_t want_wheel[6] = { 1, 0, 0x0a, 1, 0x28, 0 }, want_wheel_r[6] = { 1, 0, 0x0a, 2, 0x28, 0 };
+    check(razer_effect_build(1, RAZER_EFFECT_WAVE, &o, a) == 6 && memcmp(a, want_wave, 6) == 0, "wave");
+    o.reverse = 1;
+    check(razer_effect_build(1, RAZER_EFFECT_WAVE, &o, a) == 6 && memcmp(a, want_wave_r, 6) == 0,
+          "wave reversed");
+    check(razer_effect_build(1, RAZER_EFFECT_WHEEL, &o, a) == 6 && memcmp(a, want_wheel_r, 6) == 0,
+          "wheel reversed");
+    o.reverse = 0;
+    check(razer_effect_build(1, RAZER_EFFECT_WHEEL, &o, a) == 6 && memcmp(a, want_wheel, 6) == 0, "wheel");
+
+    const uint8_t want_star_random[6] = { 1, 0, 7, 0, 3, 0 };
+    const uint8_t want_star_one[9] = { 1, 0, 7, 0, 3, 1, 0xff, 0, 0 };
+    const uint8_t want_star_two[12] = { 1, 0, 7, 0, 3, 2, 0xff, 0, 0, 0, 0xff, 0 };
+    struct razer_effect_opts star = { .speed = 3 };
+    check(razer_effect_build(1, RAZER_EFFECT_STARLIGHT, &star, a) == 6
+              && memcmp(a, want_star_random, 6) == 0, "starlight random");
+    star.colors = 1;
+    memcpy(star.rgb[0], red, 3);
+    check(razer_effect_build(1, RAZER_EFFECT_STARLIGHT, &star, a) == 9
+              && memcmp(a, want_star_one, 9) == 0, "starlight one colour");
+    star.colors = 2;
+    memcpy(star.rgb[1], green, 3);
+    check(razer_effect_build(1, RAZER_EFFECT_STARLIGHT, &star, a) == 12
+              && memcmp(a, want_star_two, 12) == 0, "starlight two colours");
+    star.speed = 0; // the middle speed
+    razer_effect_build(1, RAZER_EFFECT_STARLIGHT, &star, a);
+    check(a[4] == 2, "starlight default speed");
+
+    const uint8_t want_breath_two[12] = { 1, 0, 2, 2, 0, 2, 0, 0xff, 0, 0xff, 0, 0 };
+    struct razer_effect_opts two = { .colors = 2 };
+    memcpy(two.rgb[0], green, 3);
+    memcpy(two.rgb[1], red, 3);
+    check(razer_effect_build(1, RAZER_EFFECT_BREATHING, &two, a) == 12
+              && memcmp(a, want_breath_two, 12) == 0, "breathing two colours");
+
+    // Static needs a colour and ignores a second one; a third colour is not a thing.
+    two.colors = 0;
+    check(razer_effect_build(1, RAZER_EFFECT_STATIC, &two, a) == 0, "static needs a colour");
+    two.colors = 2;
+    check(razer_effect_build(1, RAZER_EFFECT_STATIC, &two, a) == 9, "static uses one colour");
+    two.colors = 3;
+    check(razer_effect_build(1, RAZER_EFFECT_BREATHING, &two, a) == 0, "three colours refused");
+    check(razer_effect_build(1, RAZER_EFFECT_WAVE, nullptr, a) == 6, "no options is allowed");
+
+    // Names, including the reversed ones.
+    bool rev = false;
+    check(razer_effect_lookup("wave", &rev) == RAZER_EFFECT_WAVE && !rev, "name wave");
+    check(razer_effect_lookup("wave-reverse", &rev) == RAZER_EFFECT_WAVE && rev, "name wave-reverse");
+    check(razer_effect_lookup("wheel-reverse", &rev) == RAZER_EFFECT_WHEEL && rev, "name wheel-reverse");
+    check(razer_effect_id("starlight") == RAZER_EFFECT_STARLIGHT && razer_effect_id("fire") == -1
+              && razer_effect_id(nullptr) == -1 && razer_effect_id("wave-") == -1, "names");
+
     // Spectrum, storage 00, as a whole frame: 52 ^ 06 ^ 0f ^ 02 ^ 03 = 5a.
     check(razer_effect_args(0, RAZER_EFFECT_SPECTRUM, nullptr, a) == 6
               && razer_encode(frame, 0x52, 0x0f, 0x02, a, 6) == 0 && frame[6] == 6

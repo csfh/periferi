@@ -52,29 +52,56 @@ int razer_decode(const uint8_t frame[RAZER_REPORT_LEN], uint8_t cls, uint8_t cmd
 size_t razer_effect_args(uint8_t storage, uint8_t effect, const uint8_t rgb[3],
                          uint8_t args[RAZER_EFFECT_ARGS_MAX])
 {
+    struct razer_effect_opts opts = { .colors = rgb ? 1 : 0 };
+    if (rgb)
+        memcpy(opts.rgb[0], rgb, 3);
+    return razer_effect_build(storage, effect, &opts, args);
+}
+
+size_t razer_effect_build(uint8_t storage, uint8_t effect, const struct razer_effect_opts *opts,
+                          uint8_t args[RAZER_EFFECT_ARGS_MAX])
+{
     memset(args, 0, RAZER_EFFECT_ARGS_MAX);
     args[0] = storage;
     args[2] = effect;
+    unsigned colors = opts ? opts->colors : 0;
+    if (colors > 2)
+        return 0;
 
     switch (effect) {
     case RAZER_EFFECT_NONE:
     case RAZER_EFFECT_SPECTRUM:
         return 6;
-    case RAZER_EFFECT_BREATHING:
-        if (!rgb)
-            return 6; // random colours
-        args[3] = 0x01; // one colour
-        break;
+    case RAZER_EFFECT_WAVE:
+        args[3] = opts && opts->reverse ? 1 : 0;
+        args[4] = 0x28; // speed, as the reference sends it
+        return 6;
+    case RAZER_EFFECT_WHEEL:
+        args[3] = opts && opts->reverse ? 2 : 1;
+        args[4] = 0x28;
+        return 6;
     case RAZER_EFFECT_STATIC:
-        if (!rgb)
+        if (colors < 1)
             return 0;
-        break;
+        args[5] = 0x01;
+        memcpy(args + 6, opts->rgb[0], 3);
+        return 9;
+    case RAZER_EFFECT_BREATHING:
+    case RAZER_EFFECT_STARLIGHT:
+        if (effect == RAZER_EFFECT_STARLIGHT)
+            args[4] = opts && opts->speed >= 1 && opts->speed <= 3 ? opts->speed : 2;
+        if (colors == 0)
+            return 6; // random colours
+        if (effect == RAZER_EFFECT_BREATHING)
+            args[3] = (uint8_t)colors;
+        args[5] = (uint8_t)colors;
+        memcpy(args + 6, opts->rgb[0], 3);
+        if (colors == 2)
+            memcpy(args + 9, opts->rgb[1], 3);
+        return colors == 2 ? 12 : 9;
     default:
         return 0;
     }
-    args[5] = 0x01;
-    memcpy(args + 6, rgb, 3);
-    return 9;
 }
 
 bool razer_event_decode(const uint8_t *report, size_t len, struct razer_event *ev)
@@ -101,14 +128,25 @@ void razer_state_apply(struct razer_state *state, const struct razer_event *ev)
         state->dial = ev->value;
 }
 
-int razer_effect_id(const char *name)
+int razer_effect_lookup(const char *name, bool *reverse)
 {
-    static const struct { const char *name; int id; } effects[] = {
-        { "none", RAZER_EFFECT_NONE }, { "static", RAZER_EFFECT_STATIC },
-        { "breathing", RAZER_EFFECT_BREATHING }, { "spectrum", RAZER_EFFECT_SPECTRUM },
+    static const struct { const char *name; int id; bool reverse; } effects[] = {
+        { "none", RAZER_EFFECT_NONE, false }, { "static", RAZER_EFFECT_STATIC, false },
+        { "breathing", RAZER_EFFECT_BREATHING, false }, { "spectrum", RAZER_EFFECT_SPECTRUM, false },
+        { "wave", RAZER_EFFECT_WAVE, false }, { "wave-reverse", RAZER_EFFECT_WAVE, true },
+        { "starlight", RAZER_EFFECT_STARLIGHT, false }, { "wheel", RAZER_EFFECT_WHEEL, false },
+        { "wheel-reverse", RAZER_EFFECT_WHEEL, true },
     };
     for (size_t i = 0; i < sizeof effects / sizeof *effects; i++)
-        if (name && strcmp(effects[i].name, name) == 0)
+        if (name && strcmp(effects[i].name, name) == 0) {
+            if (reverse)
+                *reverse = effects[i].reverse;
             return effects[i].id;
+        }
     return -1;
+}
+
+int razer_effect_id(const char *name)
+{
+    return razer_effect_lookup(name, nullptr);
 }
