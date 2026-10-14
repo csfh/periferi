@@ -120,8 +120,6 @@ TestCase {
     verify(!Mic.showColors(look("spectrum", "", -1)))
     verify(!Mic.showColors(look("wave", "", -1)))
     verify(!Mic.showColors(look("wave-reverse", "", -1)))
-    verify(!Mic.showColors(look("wheel", "", -1)))
-    verify(!Mic.showColors(look("wheel-reverse", "", -1)))
     verify(!Mic.showColors(look("none", "", -1)))
     verify(Mic.showColors(look("static", "0000ff", -1)))
     verify(Mic.showColors(look("breathing", "", -1)))
@@ -197,7 +195,7 @@ TestCase {
     compare(Mic.lookText(look("breathing", "00ff00", -1)), "Saved: breathing, colour 00ff00")
     compare(Mic.lookText(look("breathing", "00ff00", 51, "ff0000")),
             "Saved: breathing, colours 00ff00 and ff0000, brightness 20%")
-    compare(Mic.lookText(look("wheel-reverse", "", -1)), "Saved: wheel, other way")
+    compare(Mic.lookText(look("wave-reverse", "", -1)), "Saved: wave, other way")
     compare(Mic.lookLabel("unmuted"), "Unmuted look")
     compare(Mic.lookLabel("muted"), "Muted look")
     compare(Mic.lookLabel("other"), "")
@@ -209,7 +207,7 @@ TestCase {
     Mic.presets.forEach(function(p) { verify(Mic.validHex(p.hex), p.name) })
     compare(Mic.presets.length, 8)
     compare(Mic.effects.map(function(e) { return e.id }),
-            ["static", "breathing", "spectrum", "wave", "wave-reverse", "wheel", "wheel-reverse", "none"])
+            ["static", "breathing", "spectrum", "wave", "wave-reverse", "none"])
     compare(Mic.looks.map(function(l) { return l.id }), ["unmuted", "muted"])
     Mic.effects.forEach(function(e) {
       verify(Mic.withEffect(look("", "", -1), e.id) !== null, e.id)

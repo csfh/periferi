@@ -29,8 +29,6 @@ var effects = [
   { id: "spectrum", label: "Spectrum", colors: 0 },
   { id: "wave", label: "Wave", colors: 0 },
   { id: "wave-reverse", label: "Wave, other way", colors: 0 },
-  { id: "wheel", label: "Wheel", colors: 0 },
-  { id: "wheel-reverse", label: "Wheel, other way", colors: 0 },
   { id: "none", label: "Off", colors: 0 }
 ]
 
@@ -154,7 +152,7 @@ function applyArgs(which) { return ["apply", which] }
 function canApply(look) { return !!look && (look.effect !== "" || look.brightness >= 0) }
 
 // Do the colour swatches belong here? Not for an effect that takes no colour (spectrum, wave,
-// wheel, off), where they would only suggest a choice that does nothing. With no effect chosen yet
+// off), where they would only suggest a choice that does nothing. With no effect chosen yet
 // they stay, because picking a colour is a way to start: it selects the Colour effect.
 function showColors(look) { return !look || look.effect === "" || maxColors(look.effect) >= 1 }
 

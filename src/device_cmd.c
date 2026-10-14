@@ -133,7 +133,7 @@ static bool parse_color(const char *s, uint8_t rgb[3])
 }
 
 static const char effect_names[] =
-    "effect must be none, static, breathing, spectrum, wave, wave-reverse, wheel or wheel-reverse";
+    "effect must be none, static, breathing, spectrum, wave or wave-reverse";
 
 // An effect name and up to two colours (hex text, or null) as the options the frame builder takes.
 // False if the name is unknown, a colour is not six hex digits, a second colour has no first, or

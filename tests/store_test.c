@@ -152,13 +152,13 @@ int main(void)
     CHECK(strcmp(peri_look_load(ID, UN).effect, "spectrum") == 0); // the refused saves changed nothing
 
     // The new effect names are accepted, the reversed ones too, and nothing else.
-    const char *names[] = { "wave", "wave-reverse", "wheel", "wheel-reverse" };
+    const char *names[] = { "wave", "wave-reverse" };
     for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
         struct peri_look n = look(names[i], "", -1);
         CHECK(peri_look_save(ID, MU, &n));
         CHECK(strcmp(peri_look_load(ID, MU).effect, names[i]) == 0);
     }
-    struct peri_look nope = look("starlight", "", -1);   // not an effect this mic shows
+    struct peri_look nope = look("wheel", "", -1);   // not an effect this mic shows
     CHECK(!peri_look_save(ID, MU, &nope));
 
     // The old single-look format (what an earlier version wrote) loads as two empty looks, and

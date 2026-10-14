@@ -77,10 +77,6 @@ size_t razer_effect_build(uint8_t storage, uint8_t effect, const struct razer_ef
         args[3] = opts && opts->reverse ? 1 : 0;
         args[4] = 0x28; // speed, as the reference sends it
         return 6;
-    case RAZER_EFFECT_WHEEL:
-        args[3] = opts && opts->reverse ? 2 : 1;
-        args[4] = 0x28;
-        return 6;
     case RAZER_EFFECT_STATIC:
         if (colors < 1)
             return 0;
@@ -131,7 +127,6 @@ int razer_effect_lookup(const char *name, bool *reverse)
         { "none", RAZER_EFFECT_NONE, false }, { "static", RAZER_EFFECT_STATIC, false },
         { "breathing", RAZER_EFFECT_BREATHING, false }, { "spectrum", RAZER_EFFECT_SPECTRUM, false },
         { "wave", RAZER_EFFECT_WAVE, false }, { "wave-reverse", RAZER_EFFECT_WAVE, true },
-        { "wheel", RAZER_EFFECT_WHEEL, false }, { "wheel-reverse", RAZER_EFFECT_WHEEL, true },
     };
     for (size_t i = 0; i < sizeof effects / sizeof *effects; i++)
         if (name && strcmp(effects[i].name, name) == 0) {

@@ -61,7 +61,6 @@ enum razer_effect {
     RAZER_EFFECT_BREATHING = 0x02, // pulses; random colours, or one or two chosen colours
     RAZER_EFFECT_SPECTRUM = 0x03,  // cycles through all colours without pulsing
     RAZER_EFFECT_WAVE = 0x04,      // a wave that runs round the ring, in one of two directions
-    RAZER_EFFECT_WHEEL = 0x0a,     // a spinning wheel, in one of two directions
 };
 #define RAZER_EFFECT_ARGS_MAX 12
 
@@ -69,12 +68,11 @@ enum razer_effect {
 struct razer_effect_opts {
     uint8_t colors;
     uint8_t rgb[2][3];
-    uint8_t reverse;  // wave and wheel: 0 or 1, which way round (which is which is not established)
+    uint8_t reverse;  // wave: 0 or 1, which way round (which is which is not established)
 };
 
-// The effect for a name: "none", "static", "breathing", "spectrum", "wave", "wave-reverse",
-// "wheel", "wheel-reverse". Returns the effect id (or -1) and, if `reverse` is not
-// null, whether the name is a reversed one.
+// The effect for a name: "none", "static", "breathing", "spectrum", "wave" or "wave-reverse".
+// Returns the effect id (or -1) and, if `reverse` is not null, whether the name is the reversed one.
 int razer_effect_lookup(const char *name, bool *reverse);
 int razer_effect_id(const char *name);
 

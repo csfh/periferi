@@ -110,15 +110,11 @@ int main(void)
     // from the same place: they have not been seen to work on the microphone.
     struct razer_effect_opts o = { 0 };
     const uint8_t want_wave[6] = { 1, 0, 4, 0, 0x28, 0 }, want_wave_r[6] = { 1, 0, 4, 1, 0x28, 0 };
-    const uint8_t want_wheel[6] = { 1, 0, 0x0a, 1, 0x28, 0 }, want_wheel_r[6] = { 1, 0, 0x0a, 2, 0x28, 0 };
     check(razer_effect_build(1, RAZER_EFFECT_WAVE, &o, a) == 6 && memcmp(a, want_wave, 6) == 0, "wave");
     o.reverse = 1;
     check(razer_effect_build(1, RAZER_EFFECT_WAVE, &o, a) == 6 && memcmp(a, want_wave_r, 6) == 0,
           "wave reversed");
-    check(razer_effect_build(1, RAZER_EFFECT_WHEEL, &o, a) == 6 && memcmp(a, want_wheel_r, 6) == 0,
-          "wheel reversed");
     o.reverse = 0;
-    check(razer_effect_build(1, RAZER_EFFECT_WHEEL, &o, a) == 6 && memcmp(a, want_wheel, 6) == 0, "wheel");
 
 
     const uint8_t want_breath_two[12] = { 1, 0, 2, 2, 0, 2, 0, 0xff, 0, 0xff, 0, 0 };
@@ -141,7 +137,7 @@ int main(void)
     bool rev = false;
     check(razer_effect_lookup("wave", &rev) == RAZER_EFFECT_WAVE && !rev, "name wave");
     check(razer_effect_lookup("wave-reverse", &rev) == RAZER_EFFECT_WAVE && rev, "name wave-reverse");
-    check(razer_effect_lookup("wheel-reverse", &rev) == RAZER_EFFECT_WHEEL && rev, "name wheel-reverse");
+    check(razer_effect_id("wheel") == -1 && razer_effect_id("wheel-reverse") == -1, "wheel is not an effect here");
     check(razer_effect_id("starlight") == -1 && razer_effect_id("fire") == -1
               && razer_effect_id(nullptr) == -1 && razer_effect_id("wave-") == -1, "names");
 
