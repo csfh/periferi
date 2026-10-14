@@ -910,7 +910,7 @@ static int cmd_status(const char *id)
 }
 
 // peri look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>]
-//           [brightness=<0-255>]
+//           [color2=<rrggbb>] [brightness=<0-255>]
 // A module keeps two saved looks. get and save only touch the saved file; apply is the one that
 // sends the look to the device.
 static int cmd_look(int argc, char **argv)
@@ -1007,11 +1007,11 @@ int main(int argc, char **argv)
         return cmd_status(argv[2]);
     if (argc >= 4 && argc <= 8 && strcmp(argv[1], "audio") == 0)
         return cmd_audio(argc, argv);
-    if (argc >= 5 && argc <= 8 && strcmp(argv[1], "look") == 0)
+    if (argc >= 5 && argc <= 9 && strcmp(argv[1], "look") == 0)
         return cmd_look(argc, argv);
-    if (argc >= 4 && argc <= 5 && strcmp(argv[1], "set") == 0)
+    if (argc >= 4 && argc <= 6 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [brightness=<n>]|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [brightness=<n>]|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }

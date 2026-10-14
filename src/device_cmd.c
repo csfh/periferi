@@ -117,14 +117,37 @@ static bool parse_color(const char *s, uint8_t rgb[3])
     return true;
 }
 
+static const char effect_names[] =
+    "effect must be none, static, breathing, spectrum, wave, wave-reverse, starlight, wheel or wheel-reverse";
+
+// An effect name and up to two colours (hex text, or null) as the options the frame builder takes.
+// False if the name is unknown, a colour is not six hex digits, a second colour has no first, or
+// the effect lacks what it needs (static needs a colour). *effect is the effect id.
+static bool effect_opts(const char *name, const char *color, const char *color2,
+                        struct razer_effect_opts *opts, int *effect)
+{
+    bool reverse;
+    *effect = razer_effect_lookup(name, &reverse);
+    *opts = (struct razer_effect_opts){ .reverse = reverse };
+    if (*effect < 0 || (color2 && !color))
+        return false;
+    if (color && !parse_color(color, opts->rgb[0]))
+        return false;
+    if (color2 && !parse_color(color2, opts->rgb[1]))
+        return false;
+    opts->colors = (uint8_t)(color ? (color2 ? 2 : 1) : 0);
+    uint8_t args[RAZER_EFFECT_ARGS_MAX];
+    return razer_effect_build(0, (uint8_t)*effect, opts, args) != 0;
+}
+
 // set <module-id> brightness=<0-255>
-// set <module-id> effect=<none|static|breathing|spectrum> [color=<rrggbb>]
+// set <module-id> effect=<name> [color=<rrggbb>] [color2=<rrggbb>]
 // One kind of change per request. The device cannot be asked what its effect or colour is, so
 // the reply only says what was sent.
 void set_handle(const char *args, char *reply, size_t size)
 {
-    static const char usage[] = "err usage: set <module-id> brightness=<0-255> | "
-                                "effect=<none|static|breathing|spectrum> [color=<rrggbb>]\n";
+    static const char usage[] = "err usage: set <module-id> brightness=<0-255> | effect=<name> "
+                                "[color=<rrggbb>] [color2=<rrggbb>]\n";
     char line[128], *rest;
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
@@ -135,8 +158,7 @@ void set_handle(const char *args, char *reply, size_t size)
 
     long brightness = -1, effect = -1;
     const char *effect_name = "";
-    uint8_t rgb[3];
-    bool has_color = false;
+    const char *color = nullptr, *color2 = nullptr;
     for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
         if (strncmp(t, "brightness=", 11) == 0 && brightness < 0) {
             char *end;
@@ -150,28 +172,39 @@ void set_handle(const char *args, char *reply, size_t size)
             effect = razer_effect_id(t + 7);
             effect_name = t + 7;
             if (effect < 0) {
-                err(reply, size, "effect must be none, static, breathing or spectrum", id);
+                err(reply, size, effect_names, id);
                 return;
             }
-        } else if (strncmp(t, "color=", 6) == 0 && !has_color) {
-            if (!parse_color(t + 6, rgb)) {
+        } else if (strncmp(t, "color=", 6) == 0 && !color) {
+            uint8_t check[3];
+            if (!parse_color(t + 6, check)) {
                 err(reply, size, "color must be six hex digits, like 0000ff", id);
                 return;
             }
-            has_color = true;
+            color = t + 6;
+        } else if (strncmp(t, "color2=", 7) == 0 && !color2) {
+            uint8_t check[3];
+            if (!parse_color(t + 7, check)) {
+                err(reply, size, "color2 must be six hex digits, like ff0000", id);
+                return;
+            }
+            color2 = t + 7;
         } else {
             snprintf(reply, size, "%s", usage);
             return;
         }
     }
     bool bright_set = brightness >= 0, effect_set = effect >= 0;
-    if (bright_set == effect_set || (bright_set && has_color) || (has_color && !effect_set)) {
+    if (bright_set == effect_set || (bright_set && (color || color2))
+        || ((color || color2) && !effect_set)) {
         snprintf(reply, size, "%s", usage);
         return;
     }
-    if (effect_set && razer_effect_args(0, (uint8_t)effect, has_color ? rgb : nullptr,
-                                        (uint8_t[RAZER_EFFECT_ARGS_MAX]){}) == 0) {
-        err(reply, size, "this effect needs a color=<rrggbb>", id);
+    struct razer_effect_opts opts;
+    int effect_id_checked = -1;
+    if (effect_set && !effect_opts(effect_name, color, color2, &opts, &effect_id_checked)) {
+        err(reply, size, color2 && !color ? "a second colour needs a first"
+                                          : "this effect needs a valid color=<rrggbb>", id);
         return;
     }
 
@@ -181,14 +214,14 @@ void set_handle(const char *args, char *reply, size_t size)
         return;
 
     if (effect_set) {
-        int rc = razer_set_effect(fd, RAZER_STORE_NONE, (uint8_t)effect, has_color ? rgb : nullptr);
+        int rc = razer_set_effect_opts(fd, RAZER_STORE_NONE, (uint8_t)effect_id_checked, &opts);
         close(fd);
         if (rc != 0) {
             err(reply, size, "the device did not accept the effect", id);
             return;
         }
         snprintf(reply, size, "ok module=%s sent=%s color=%s storage=none readback=unavailable\n",
-                 m.id, effect_name, has_color ? "yes" : "no");
+                 m.id, effect_name, color ? (color2 ? "two" : "yes") : "no");
         return;
     }
 
@@ -238,16 +271,16 @@ static void reply_look(char *reply, size_t size, const char *id, enum peri_look_
     char brightness[8] = "unset";
     if (l->brightness >= 0)
         snprintf(brightness, sizeof brightness, "%d", l->brightness);
-    snprintf(reply, size, "ok module=%s look=%s effect=%s color=%s brightness=%s\n", id,
+    snprintf(reply, size, "ok module=%s look=%s effect=%s color=%s color2=%s brightness=%s\n", id,
              peri_look_which_name(which), l->effect[0] ? l->effect : "unset",
-             l->color[0] ? l->color : "none", brightness);
+             l->color[0] ? l->color : "none", l->color2[0] ? l->color2 : "none", brightness);
 }
 
 void look_handle(const char *args, char *reply, size_t size)
 {
     static const char usage[] = "err usage: look <module-id> get|save|apply <unmuted|muted> "
-                                "[effect=<name>] [color=<rrggbb>] [brightness=<0-255>]\n";
-    char line[192], *rest;
+                                "[effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [brightness=<0-255>]\n";
+    char line[224], *rest;
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
     const char *verb = strtok_r(nullptr, " \n", &rest);
@@ -274,7 +307,7 @@ void look_handle(const char *args, char *reply, size_t size)
         }
         if (strncmp(t, "effect=", 7) == 0 && !want.effect[0]) {
             if (razer_effect_id(t + 7) < 0 || strlen(t + 7) >= sizeof want.effect) {
-                err(reply, size, "effect must be none, static, breathing or spectrum", id);
+                err(reply, size, effect_names, id);
                 return;
             }
             snprintf(want.effect, sizeof want.effect, "%s", t + 7);
@@ -285,6 +318,13 @@ void look_handle(const char *args, char *reply, size_t size)
                 return;
             }
             snprintf(want.color, sizeof want.color, "%s", t + 6);
+        } else if (strncmp(t, "color2=", 7) == 0 && !want.color2[0]) {
+            uint8_t rgb[3];
+            if (!parse_color(t + 7, rgb)) {
+                err(reply, size, "color2 must be six hex digits, like ff0000", id);
+                return;
+            }
+            snprintf(want.color2, sizeof want.color2, "%s", t + 7);
         } else if (strncmp(t, "brightness=", 11) == 0 && want.brightness < 0) {
             char *end;
             unsigned long v = strtoul(t + 11, &end, 10);
@@ -314,6 +354,10 @@ void look_handle(const char *args, char *reply, size_t size)
             err(reply, size, "the static effect needs a color=<rrggbb>", id);
             return;
         }
+        if (want.color2[0] && !want.color[0]) {
+            err(reply, size, "a second colour needs a first", id);
+            return;
+        }
         if (want.brightness >= 0 && (m.max_brightness == 0 || want.brightness > m.max_brightness)) {
             err(reply, size, "brightness is above the module's limit", id);
             return;
@@ -338,9 +382,12 @@ void look_handle(const char *args, char *reply, size_t size)
         err(reply, size, "the saved brightness is above the module's limit", id);
         return;
     }
-    uint8_t rgb[3];
-    if (strcmp(l.effect, "static") == 0 && !parse_color(l.color, rgb)) {
-        err(reply, size, "the saved colour is not valid", id);
+    struct razer_effect_opts opts;
+    int effect_checked = -1;
+    if (l.effect[0]
+        && !effect_opts(l.effect, l.color[0] ? l.color : nullptr, l.color2[0] ? l.color2 : nullptr,
+                        &opts, &effect_checked)) {
+        err(reply, size, "the saved effect is not valid", id);
         return;
     }
 
@@ -349,8 +396,7 @@ void look_handle(const char *args, char *reply, size_t size)
     if (fd < 0)
         return;
     if (l.effect[0]
-        && razer_set_effect(fd, RAZER_STORE_NONE, (uint8_t)razer_effect_id(l.effect),
-                            l.color[0] ? rgb : nullptr) != 0) {
+        && razer_set_effect_opts(fd, RAZER_STORE_NONE, (uint8_t)effect_checked, &opts) != 0) {
         close(fd);
         err(reply, size, "the device did not accept the effect; nothing else was sent", id);
         return;

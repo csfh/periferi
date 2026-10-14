@@ -10,7 +10,8 @@
 //
 //   [unmuted]
 //   effect = "static"
-//   color = "0000ff"     (only for "static"; every other effect has none)
+//   color = "0000ff"     ("static" needs one; "breathing" and "starlight" may have one or two)
+//   color2 = "ff0000"    (a second colour, only with a first, only for "breathing"/"starlight")
 //   brightness = 102     (0-255)
 //
 //   [muted]
@@ -22,8 +23,9 @@
 enum peri_look_which { PERI_LOOK_UNMUTED, PERI_LOOK_MUTED };
 
 struct peri_look {
-    char effect[16];    // "none", "static", "breathing" or "spectrum"; "" if not set
-    char color[7];      // six lowercase hex digits for "static"; "" otherwise
+    char effect[16];    // see razer_effect_lookup(); "" if not set
+    char color[7];      // six lowercase hex digits; "" if the effect takes none or none was chosen
+    char color2[7];     // a second colour; "" unless the effect takes two and has a first
     int brightness;     // 0-255, or -1 if not set
 };
 
@@ -37,7 +39,8 @@ const char *peri_look_which_name(enum peri_look_which which);
 
 // Save one look, keeping the other as it is. Atomic (temp file, then rename). False on any
 // problem, including an invalid module id, effect, colour or brightness; the file is then left
-// as it was. "static" needs a colour; every other effect drops it.
+// as it was. "static" needs a colour; effects that take no colour drop any given, and a second
+// colour is dropped unless the effect takes two and a first colour is there.
 bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look);
 
 // A saved look, or an empty one when there is none, the file cannot be read, or what is in it is

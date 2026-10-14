@@ -64,10 +64,20 @@ static bool clean(const struct peri_look *in, struct peri_look *out)
 {
     *out = PERI_LOOK_EMPTY;
     if (in->effect[0]) {
-        if (razer_effect_id(in->effect) < 0 || strlen(in->effect) >= sizeof out->effect)
+        int effect = razer_effect_id(in->effect);
+        if (effect < 0 || strlen(in->effect) >= sizeof out->effect)
             return false;
         snprintf(out->effect, sizeof out->effect, "%s", in->effect);
-        if (strcmp(in->effect, "static") == 0 && !lower_hex(in->color, out->color))
+        bool takes_colors = effect == RAZER_EFFECT_STATIC || effect == RAZER_EFFECT_BREATHING
+                            || effect == RAZER_EFFECT_STARLIGHT;
+        if (effect == RAZER_EFFECT_STATIC && !lower_hex(in->color, out->color))
+            return false;
+        // Breathing and starlight may have a colour; a bad one spoils the look, a missing one means random.
+        if (takes_colors && effect != RAZER_EFFECT_STATIC && in->color[0] && !lower_hex(in->color, out->color))
+            return false;
+        // A second colour needs a first, and only breathing and starlight take two.
+        if (out->color[0] && effect != RAZER_EFFECT_STATIC && in->color2[0]
+            && !lower_hex(in->color2, out->color2))
             return false;
     }
     if (in->brightness < -1 || in->brightness > 255)
@@ -111,6 +121,8 @@ static void load_both(const char *module_id, struct peri_look looks[2])
             toml_datum_t effect = toml_seek(result.toptab, key);
             snprintf(key, sizeof key, "%s.color", which_names[i]);
             toml_datum_t color = toml_seek(result.toptab, key);
+            snprintf(key, sizeof key, "%s.color2", which_names[i]);
+            toml_datum_t color2 = toml_seek(result.toptab, key);
             snprintf(key, sizeof key, "%s.brightness", which_names[i]);
             toml_datum_t brightness = toml_seek(result.toptab, key);
 
@@ -118,6 +130,8 @@ static void load_both(const char *module_id, struct peri_look looks[2])
                 snprintf(raw.effect, sizeof raw.effect, "%s", effect.u.s);
             if (color.type == TOML_STRING && color.u.s && strlen(color.u.s) == 6)
                 snprintf(raw.color, sizeof raw.color, "%s", color.u.s);
+            if (color2.type == TOML_STRING && color2.u.s && strlen(color2.u.s) == 6)
+                snprintf(raw.color2, sizeof raw.color2, "%s", color2.u.s);
             if (brightness.type == TOML_INT64 && brightness.u.int64 >= 0 && brightness.u.int64 <= 255)
                 raw.brightness = (int)brightness.u.int64;
 
@@ -127,6 +141,7 @@ static void load_both(const char *module_id, struct peri_look looks[2])
             if (!clean(&raw, &good)) {
                 raw.effect[0] = '\0';
                 raw.color[0] = '\0';
+                raw.color2[0] = '\0';
                 clean(&raw, &good);
             }
             looks[i] = good;
@@ -151,6 +166,8 @@ static int append_look(char *buf, size_t size, enum peri_look_which which, const
         n += snprintf(buf + n, size - (size_t)n, "effect = \"%s\"\n", l->effect);
     if (l->color[0])
         n += snprintf(buf + n, size - (size_t)n, "color = \"%s\"\n", l->color);
+    if (l->color2[0])
+        n += snprintf(buf + n, size - (size_t)n, "color2 = \"%s\"\n", l->color2);
     if (l->brightness >= 0)
         n += snprintf(buf + n, size - (size_t)n, "brightness = %d\n", l->brightness);
     return n + snprintf(buf + n, size - (size_t)n, "\n");
