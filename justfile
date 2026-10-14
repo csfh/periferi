@@ -37,9 +37,9 @@ qml-check:
     ! grep -rn 'import qs\.' quickshell/ || { echo "the generic core must not import the host shell (qs.*)"; exit 1; }
     d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && cp -rL adapters/omarchy/. "$d" && omarchy plugin validate "$d"
     # /usr/bin/qmllint is Qt 5 here. The Qt 6 one catches typos but exits 0 on warnings, so --max-warnings 0.
-    /usr/lib/qt6/bin/qmllint --signal-handler-parameters disable --max-warnings 0 quickshell/peri/PeriLighting.qml quickshell/peri/PeriDevices.qml quickshell/peri/PeriMic.qml tests/qml/live/shell.qml
+    /usr/lib/qt6/bin/qmllint --signal-handler-parameters disable --max-warnings 0 quickshell/peri/PeriLighting.qml quickshell/peri/PeriDevices.qml quickshell/peri/PeriMic.qml quickshell/peri/PeriMouse.qml tests/qml/live/shell.qml
     # The Omarchy and standalone files import host modules (qs.*, PanelWindow) that lint cannot resolve: syntax only.
-    qmllint -I /usr/share/omarchy/shell adapters/omarchy/Lighting.qml adapters/omarchy/PanelContent.qml adapters/omarchy/LightingControls.qml adapters/omarchy/MicControls.qml adapters/omarchy/HuePlane.qml adapters/standalone/shell.qml
+    qmllint -I /usr/share/omarchy/shell adapters/omarchy/Lighting.qml adapters/omarchy/PanelContent.qml adapters/omarchy/LightingControls.qml adapters/omarchy/MicControls.qml adapters/omarchy/MouseControls.qml adapters/omarchy/HuePlane.qml adapters/standalone/shell.qml
 
 # Omarchy shell widget: `just plugin` installs and enables it, `just plugin remove` removes it.
 plugin action="install":

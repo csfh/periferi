@@ -21,6 +21,12 @@ ShellRoot {
                                                          : Quickshell.env("HOME") + "/.local/bin/peri"
   }
 
+  PeriMouse {
+    id: mouse
+    periPath: Quickshell.env("PERI_PREVIEW_PERI") !== "" ? Quickshell.env("PERI_PREVIEW_PERI")
+                                                         : Quickshell.env("HOME") + "/.local/bin/peri"
+  }
+
   PeriDevices { id: devices; interval: 0 }
 
   FloatingWindow {
@@ -39,6 +45,7 @@ ShellRoot {
       anchors.margins: 12
       light: lighting
       mic: mic
+      mouse: mouse
       selectedKey: Quickshell.env("PERI_PREVIEW_SELECT") // a device's group, to show its pane
       devs: devices
     }
