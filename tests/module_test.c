@@ -50,6 +50,42 @@ static bool rejected_with(const char *from, const char *to, const char *expect_i
     return bad;
 }
 
+static void test_select(void)
+{
+    struct peri_module mods[2] = {
+        { .id = "ctrl", .vid = 0x359b, .pid = 9, .has_usage = true, .usage_page = 0xff51, .usage = 0x58 },
+        { .id = "mic", .vid = 0x1532, .pid = 0x56f, .has_usage = true, .usage_page = 0xff53, .usage = 4 },
+    };
+    struct peri_device devs[3] = {
+        { .node = "hidraw1", .vid = 0x1532, .pid = 0x56f, .usage_page = 0xff53, .usage = 4 },
+        { .node = "hidraw5", .vid = 0x359b, .pid = 9, .usage_page = 0xff51, .usage = 0x58 },
+        { .node = "hidraw6", .vid = 0x359b, .pid = 9, .usage_page = 1, .usage = 6 }, // other interface
+    };
+    char node[32];
+    const struct peri_module *picked = nullptr;
+
+    // Chosen by module id, whatever the node numbers are.
+    CHECK(peri_module_select(devs, 3, mods, 2, "mic", node, sizeof node, &picked) == PERI_SELECT_OK);
+    CHECK(strcmp(node, "hidraw1") == 0 && picked == &mods[1]);
+    CHECK(peri_module_select(devs, 3, mods, 2, "ctrl", node, sizeof node, nullptr) == PERI_SELECT_OK);
+    CHECK(strcmp(node, "hidraw5") == 0);
+
+    CHECK(peri_module_select(devs, 3, mods, 2, "nope", node, sizeof node, nullptr)
+          == PERI_SELECT_NOT_INSTALLED);
+    CHECK(peri_module_select(devs, 1, mods, 2, "ctrl", node, sizeof node, nullptr)
+          == PERI_SELECT_NOT_CONNECTED);
+
+    // Two matching devices: refuse to guess.
+    devs[2] = devs[0];
+    strcpy(devs[2].node, "hidraw9");
+    CHECK(peri_module_select(devs, 3, mods, 2, "mic", node, sizeof node, nullptr)
+          == PERI_SELECT_AMBIGUOUS);
+
+    // A security key never matches, even on an exact ID.
+    devs[2].hidden = PERI_HIDDEN_FIDO;
+    CHECK(peri_module_select(devs, 3, mods, 2, "mic", node, sizeof node, nullptr) == PERI_SELECT_OK);
+}
+
 static void test_matches(void)
 {
     struct peri_module m = { .vid = 0x359b, .pid = 9, .has_usage = true,
@@ -197,6 +233,12 @@ int main(void)
     CHECK(m.rgb);
     CHECK(m.max_brightness == 191); // from the board's own blob, see the module file
 
+    // The Seiren's module uses the other engine, "razer", and gives no capabilities yet.
+    CHECK(peri_module_load(CATALOG_DIR "/razer-seiren-v3-chroma/module.toml", &m, err, sizeof err));
+    CHECK(strcmp(m.id, "razer-seiren-v3-chroma") == 0 && strcmp(m.engine, "razer") == 0);
+    CHECK(m.vid == 0x1532 && m.pid == 0x056f && m.usage_page == 0xff53 && m.usage == 0x04);
+    CHECK(!m.rgb && m.max_brightness == 0);
+
     // Ids double as path components: only [a-z0-9-], not at the edges.
     CHECK(peri_module_id_valid("drop-ctrl-v2") && peri_module_id_valid("a"));
     CHECK(!peri_module_id_valid("") && !peri_module_id_valid("-a") && !peri_module_id_valid("a-"));
@@ -213,6 +255,7 @@ int main(void)
     CHECK(rejected_with("\"my-mod\"", "5", "must be a string"));
     CHECK(rejected_with("\"My mod\"", "\"\"", "'name'"));
     CHECK(rejected_with("engine = \"xap\"", "engine = \"shell\"", "unknown engine"));
+    CHECK(rejected_with("usage_page = 0xff51\n", "", "go together"));
     CHECK(rejected_with("vid = 0x1234", "vid = 0", "vid"));
     CHECK(rejected_with("vid = 0x1234", "vid = 0x10000", "vid"));
     CHECK(rejected_with("vid = 0x1234", "vid = -1", "vid"));
@@ -266,6 +309,7 @@ int main(void)
     CHECK(peri_modules_scan(FIXTURES_DIR "/does-not-exist", found, 8) == 0);
 
     test_matches();
+    test_select();
     test_install_remove();
 
     return failures ? 1 : 0;

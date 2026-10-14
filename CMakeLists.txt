@@ -21,8 +21,8 @@ add_library(tomlc17 STATIC vendor/tomlc17/tomlc17.c)
 target_include_directories(tomlc17 PUBLIC vendor/tomlc17)
 target_compile_options(tomlc17 PRIVATE -w)
 
-add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/scan.c src/xap.c)
-add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c)
+add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/scan.c src/xap.c src/razer.c src/razer_dev.c)
+add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/status_cmd.c src/razer.c src/razer_dev.c)
 target_link_libraries(peri PRIVATE tomlc17)
 target_link_libraries(perid PRIVATE tomlc17)
 
@@ -47,6 +47,9 @@ add_test(NAME udev COMMAND udev_test)
 
 add_executable(rgb_settings_test tests/rgb_settings_test.c src/rgb_settings.c src/xap.c src/scan.c)
 add_test(NAME rgb_settings COMMAND rgb_settings_test)
+
+add_executable(razer_test tests/razer_test.c src/razer.c)
+add_test(NAME razer COMMAND razer_test)
 
 add_executable(json_test tests/json_test.c src/json.c)
 add_test(NAME json COMMAND json_test)

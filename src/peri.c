@@ -3,9 +3,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <linux/hidraw.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <sys/wait.h>
@@ -14,6 +16,7 @@
 #include "common.h"
 #include "json.h"
 #include "module.h"
+#include "razer_dev.h"
 #include "scan.h"
 #include "udev.h"
 #include "xap.h"
@@ -543,6 +546,114 @@ static int cmd_monitor(const char *arg)
     return 0;
 }
 
+// Read one feature report of a hidraw node and print it as hex. A GET_FEATURE
+// only asks the device for a report; it never sends one. Used to look at vendor
+// interfaces nobody has documented yet. The kernel passes the buffer size on as
+// the request length, so `len` (default 64, id byte included) matters to the device.
+static int cmd_feature(const char *arg, const char *id_arg, const char *len_arg)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+    char *end;
+    long id = strtol(id_arg, &end, 16);
+    if (*id_arg == '\0' || *end != '\0' || id < 0 || id > 0xFF) {
+        fprintf(stderr, "peri: report id must be 1 byte of hex, like 07\n");
+        return 2;
+    }
+    long len = 64;
+    if (len_arg) {
+        len = strtol(len_arg, &end, 10);
+        if (*len_arg == '\0' || *end != '\0' || len < 2 || len > 256) {
+            fprintf(stderr, "peri: length must be 2-256 bytes\n");
+            return 2;
+        }
+    }
+    if (!node_allowed(name, false))
+        return 1;
+
+    char path[64];
+    snprintf(path, sizeof path, "/dev/%s", name);
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        fprintf(stderr, "peri: %s: %s%s\n", path, strerror(errno),
+                errno == EACCES ? " (try `peri setup`)" : "");
+        return 1;
+    }
+
+    uint8_t buf[256] = { (uint8_t)id };
+    int n = ioctl(fd, HIDIOCGFEATURE(len), buf);
+    int err = errno;
+    close(fd);
+    if (n < 0) {
+        fprintf(stderr, "peri: get feature %02lx on %s: %s\n", id, name, strerror(err));
+        return 1;
+    }
+
+    printf("%d", n);
+    for (int i = 0; i < n; i++)
+        printf(" %02x", buf[i]);
+    putchar('\n');
+    return 0;
+}
+
+// Razer queries `peri razer` may send. An allowlist like the XAP one: it holds only queries
+// that read (firmware get, brightness get). Setting a device mode or any lighting is never on it.
+// `args` is at least `size` long. Brightness get takes variable storage 1, LED id 0, and a zero
+// placeholder for the value.
+static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[3]; } razer_queries[] = {
+    { "firmware", 0x00, 0x81, 2, { 0, 0, 0 } },
+    { "brightness", 0x0f, 0x84, 3, { 0x01, 0x00, 0x00 } },
+};
+
+// Send one allowlisted query to a Razer control interface and print the raw reply frame,
+// then what it decodes to. Anything that is not a clean reply is reported, never retried
+// by other means.
+static int cmd_razer(const char *arg, const char *query)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+
+    size_t q = 0;
+    while (q < sizeof razer_queries / sizeof *razer_queries && strcmp(razer_queries[q].name, query))
+        q++;
+    if (q == sizeof razer_queries / sizeof *razer_queries) {
+        fprintf(stderr, "peri: unknown razer query '%s' (known: firmware, brightness)\n", query);
+        return 2;
+    }
+    if (!node_allowed(name, false))
+        return 1;
+
+    int fd = razer_open(name);
+    if (fd < 0)
+        return 1;
+    struct razer_reply reply;
+    uint8_t raw[RAZER_REPORT_LEN];
+    int got;
+    int rc = razer_call(fd, razer_queries[q].cls, razer_queries[q].cmd, razer_queries[q].size,
+                        razer_queries[q].args, &reply, raw, &got);
+    close(fd);
+
+    if (got == RAZER_REPORT_LEN) {
+        printf("raw");
+        for (int i = 0; i < RAZER_REPORT_LEN; i++)
+            printf(" %02x", raw[i]);
+        putchar('\n');
+    } else {
+        printf("raw none (last get feature returned %d bytes)\n", got);
+    }
+    if (rc < 0) {
+        printf("failed %d\n", rc);
+        return 1;
+    }
+    printf("status %02x %zu", reply.status, reply.len);
+    for (size_t i = 0; i < reply.len; i++)
+        printf(" %02x", reply.args[i]);
+    putchar('\n');
+    return reply.status == RAZER_STATUS_OK ? 0 : 1;
+}
+
 // Read-only XAP queries that take no request payload. This is an allowlist on
 // purpose: secure routes (bootloader jump, EEPROM reset, remapping) are never
 // on it, so `peri xap` cannot send them.
@@ -739,24 +850,10 @@ static int cmd_modules(int argc, char **argv)
     return 0;
 }
 
-// peri rgb get
-// peri rgb set <key=value>...
-// The daemon owns the keyboard: this only forwards the request and prints the reply.
-static int cmd_rgb(int argc, char **argv)
+// Send one request line to the daemon and print an "ok key=value ..." reply as a table, whatever
+// the keys are. An "err ..." reply goes to stderr.
+static int forward(const char *req)
 {
-    char req[256] = "rgb";
-    size_t len = strlen(req);
-    for (int i = 2; i < argc; i++) {
-        int n = snprintf(req + len, sizeof req - len, " %s", argv[i]);
-        if (n < 0 || (size_t)n >= sizeof req - len - 2) { // keep room for "\n" and NUL
-            fprintf(stderr, "peri: request too long\n");
-            return 2;
-        }
-        len += (size_t)n;
-    }
-    req[len] = '\n';
-    req[len + 1] = '\0';
-
     char reply[1024]; // the effect list alone is about 700 bytes
     if (request(req, reply, sizeof reply) <= 0)
         return 1;
@@ -776,6 +873,37 @@ static int cmd_rgb(int argc, char **argv)
     return 0;
 }
 
+// peri rgb get
+// peri rgb set <key=value>...
+// The daemon owns the keyboard: this only forwards the request and prints the reply.
+static int cmd_rgb(int argc, char **argv)
+{
+    char req[256] = "rgb";
+    size_t len = strlen(req);
+    for (int i = 2; i < argc; i++) {
+        int n = snprintf(req + len, sizeof req - len, " %s", argv[i]);
+        if (n < 0 || (size_t)n >= sizeof req - len - 2) { // keep room for "\n" and NUL
+            fprintf(stderr, "peri: request too long\n");
+            return 2;
+        }
+        len += (size_t)n;
+    }
+    req[len] = '\n';
+    req[len + 1] = '\0';
+    return forward(req);
+}
+
+// peri status <module-id>: read what the module's device reports (read-only).
+static int cmd_status(const char *id)
+{
+    char req[96];
+    if (snprintf(req, sizeof req, "status %s\n", id) >= (int)sizeof req) {
+        fprintf(stderr, "peri: request too long\n");
+        return 2;
+    }
+    return forward(req);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && strcmp(argv[1], "setup") == 0)
@@ -790,6 +918,12 @@ int main(int argc, char **argv)
     if (argc == 3 && strcmp(argv[1], "monitor") == 0)
         return cmd_monitor(argv[2]);
 
+    if ((argc == 4 || argc == 5) && strcmp(argv[1], "feature") == 0)
+        return cmd_feature(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
+
+    if (argc == 4 && strcmp(argv[1], "razer") == 0)
+        return cmd_razer(argv[2], argv[3]);
+
     if (argc >= 2 && strcmp(argv[1], "modules") == 0)
         return cmd_modules(argc, argv);
     if (argc == 3 && strcmp(argv[1], "use") == 0)
@@ -802,7 +936,9 @@ int main(int argc, char **argv)
         return cmd_xap(argv[2], argv[3]);
     if (argc >= 3 && strcmp(argv[1], "rgb") == 0)
         return cmd_rgb(argc, argv);
+    if (argc == 3 && strcmp(argv[1], "status") == 0)
+        return cmd_status(argv[2]);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|xap <node> <route-hex>|blob <node>|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|xap <node> <route-hex>|blob <node>|status <module-id>|rgb get|set <key=value>...|save>\n");
     return 2;
 }

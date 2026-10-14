@@ -107,7 +107,8 @@ built in three small steps, daemon first:
      / `just dev` use it); `peri modules` shows `access` (`ok` / `setup`); the panel shows the hint.
      Installed with `peri setup`; this narrows device access to installed modules'
      devices: after the next replug or reboot (existing ACLs may linger until then), `peri monitor` on a
-     Seiren or DeathAdder is refused until a module for them exists.
+     Seiren or DeathAdder is refused until a module for them is installed (the Seiren's is in the catalog
+     and has no controls yet; the DeathAdder has none).
 
 Rules for this work:
 - The catalog holds only modules that really exist. Today that is the CTRL v2 (XAP); with it
@@ -201,7 +202,7 @@ Prerequisite for all automation.
 
 ## Tier 6: other hardware (expensive, unproven)
 
-- [ ] Razer Seiren V3 Chroma: no documented protocol. Control interface `ff53:0004`, report ID 7, 63-byte feature report. Realistic route is capturing Razer's own software traffic (Windows VM with USB capture). Cheap first step: `peri monitor` on its button reports  **[research]**
+- [ ] Razer Seiren V3 Chroma: no official docs; only unmerged OpenRazer PRs (lighting only), so we wrote our own `razer` engine (frame codec, feature-report transport over hidraw). Done: the module is in the catalog, `peri status <module-id>` reads firmware (`0101`, meaning unproven) and brightness (0-255) through the daemon, both verified on the real mic and kept as test vectors. Its controls report on hidraw: `05 11 xx` is the tap-to-mute state (`00` muted, `01` unmuted; ALSA's `Mic Capture Switch` read off while muted, one reading), `05 0f NN` is the dial level (`0x14`-`0x64`). Next: brightness set through the daemon (the first write needs the user's OK on the exact value), then effects and colour. Control interface `ff53:0004`, report ID 7, 64-byte feature report  **[research]**
 - [ ] Razer DeathAdder V3 Pro (`1532:00c3`): unknown, left alone for now  **[research]**
 
 ## Housekeeping

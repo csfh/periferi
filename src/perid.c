@@ -10,6 +10,7 @@
 #include "inventory.h"
 #include "module.h"
 #include "rgb_cmd.h"
+#include "status_cmd.h"
 #include "scan.h"
 #include "udev.h"
 
@@ -178,6 +179,12 @@ static void handle(int client)
     if (strncmp(req, "rgb ", 4) == 0) {
         char reply[1024];
         rgb_handle(req + 4, reply, sizeof reply);
+        (void)!write(client, reply, strlen(reply));
+        return;
+    }
+    if (strncmp(req, "status ", 7) == 0) {
+        char reply[256];
+        status_handle(req + 7, reply, sizeof reply);
         (void)!write(client, reply, strlen(reply));
         return;
     }

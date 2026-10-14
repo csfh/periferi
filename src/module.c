@@ -83,7 +83,7 @@ static bool parse_fields(toml_datum_t top, struct peri_module *m, char *err, siz
         return false;
     if (!peri_module_id_valid(m->id))
         return fail(err, err_size, "'id' must be lowercase letters, digits and '-'");
-    if (strcmp(m->engine, "xap") != 0)
+    if (strcmp(m->engine, "xap") != 0 && strcmp(m->engine, "razer") != 0)
         return fail(err, err_size, "unknown engine '%s'", m->engine);
 
     bool present, has_page, has_usage;
@@ -97,8 +97,10 @@ static bool parse_fields(toml_datum_t top, struct peri_module *m, char *err, siz
     if (has_page != has_usage)
         return fail(err, err_size, "'match.usage_page' and 'match.usage' go together");
     m->has_usage = has_page;
-    if (strcmp(m->engine, "xap") == 0 && !m->has_usage)
-        return fail(err, err_size, "engine 'xap' needs 'match.usage_page' and 'match.usage'");
+    // Both engines talk to one vendor interface of a device, so they must name it.
+    if (!m->has_usage)
+        return fail(err, err_size, "engine '%s' needs 'match.usage_page' and 'match.usage'",
+                    m->engine);
 
     toml_datum_t rgb = toml_seek(top, "capabilities.rgb");
     if (rgb.type != TOML_UNKNOWN && rgb.type != TOML_BOOLEAN)
@@ -184,6 +186,35 @@ bool peri_module_matches(const struct peri_module *m, const struct peri_device *
 {
     return d->hidden == PERI_VISIBLE && m->vid == d->vid && m->pid == d->pid && m->has_usage
            && m->usage_page == d->usage_page && m->usage == d->usage;
+}
+
+enum peri_select peri_module_select(const struct peri_device *devs, size_t dev_count,
+                                    const struct peri_module *installed, size_t installed_count,
+                                    const char *id, char *node, size_t node_size,
+                                    const struct peri_module **module)
+{
+    const struct peri_module *m = nullptr;
+    for (size_t i = 0; i < installed_count && !m; i++)
+        if (strcmp(installed[i].id, id) == 0)
+            m = &installed[i];
+    if (!m)
+        return PERI_SELECT_NOT_INSTALLED;
+
+    const struct peri_device *found = nullptr;
+    for (size_t i = 0; i < dev_count; i++) {
+        if (!peri_module_matches(m, &devs[i]))
+            continue;
+        if (found)
+            return PERI_SELECT_AMBIGUOUS;
+        found = &devs[i];
+    }
+    if (!found)
+        return PERI_SELECT_NOT_CONNECTED;
+
+    snprintf(node, node_size, "%s", found->node);
+    if (module)
+        *module = m;
+    return PERI_SELECT_OK;
 }
 
 static bool mkdir_p(const char *dir)

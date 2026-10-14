@@ -10,7 +10,7 @@ struct peri_module {
     char id[49];       // [a-z0-9-], equals the module's directory name
     char name[65];
     char version[33];
-    char engine[16];   // "xap"
+    char engine[16];   // "xap" or "razer"
     uint16_t vid, pid;
     bool has_usage;    // usage_page and usage given: the match picks one interface
     uint16_t usage_page, usage;
@@ -34,6 +34,20 @@ struct peri_device;
 // True if the module drives this interface: vid, pid, usage page and usage all equal,
 // and the device is not hidden (no module can ever claim a security key or a camera).
 bool peri_module_matches(const struct peri_module *m, const struct peri_device *d);
+
+enum peri_select {
+    PERI_SELECT_OK,
+    PERI_SELECT_NOT_INSTALLED, // no installed module has this id
+    PERI_SELECT_NOT_CONNECTED, // installed, but no device matches it
+    PERI_SELECT_AMBIGUOUS,     // more than one device matches it
+};
+
+// Pick the one device an installed module (named by id) drives. The id is the selector because
+// it is stable; node numbers are not. Fills node (and *module, if not null) on PERI_SELECT_OK.
+enum peri_select peri_module_select(const struct peri_device *devs, size_t dev_count,
+                                    const struct peri_module *installed, size_t installed_count,
+                                    const char *id, char *node, size_t node_size,
+                                    const struct peri_module **module);
 
 // Copy <catalog_dir>/<id>/module.toml to <installed_dir>/<id>/module.toml (replacing
 // any installed copy). The bytes written are the bytes that were validated.

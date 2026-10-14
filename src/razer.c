@@ -1,0 +1,50 @@
+// Razer vendor frames: see razer.h for the layout. Nothing here opens a device.
+
+#include "razer.h"
+
+#include <string.h>
+
+static uint8_t xor_bytes(const uint8_t *p, size_t from, size_t to)
+{
+    uint8_t x = 0;
+    for (size_t i = from; i <= to; i++)
+        x ^= p[i];
+    return x;
+}
+
+int razer_encode(uint8_t frame[RAZER_REPORT_LEN], uint8_t transaction, uint8_t cls, uint8_t cmd,
+                 const uint8_t *args, size_t len)
+{
+    if (len > RAZER_REQUEST_ARGS_MAX)
+        return RAZER_ERR_ARGS;
+
+    memset(frame, 0, RAZER_REPORT_LEN);
+    frame[0] = RAZER_REPORT_ID;
+    frame[2] = transaction;
+    frame[6] = (uint8_t)len;
+    frame[7] = cls;
+    frame[8] = cmd;
+    if (args)
+        memcpy(frame + 9, args, len);
+    frame[63] = xor_bytes(frame, 1, 62);
+    return 0;
+}
+
+int razer_decode(const uint8_t frame[RAZER_REPORT_LEN], uint8_t cls, uint8_t cmd,
+                 struct razer_reply *reply)
+{
+    if (frame[0] != RAZER_REPORT_ID)
+        return RAZER_ERR_REPORT_ID;
+    if (frame[62] != xor_bytes(frame, 2, 61))
+        return RAZER_ERR_CRC;
+    if (frame[7] != cls || frame[8] != cmd)
+        return RAZER_ERR_MISMATCH;
+    if (frame[6] > RAZER_REPLY_ARGS_MAX)
+        return RAZER_ERR_SIZE;
+
+    reply->status = frame[1];
+    reply->transaction = frame[2];
+    reply->len = frame[6];
+    memcpy(reply->args, frame + 9, reply->len);
+    return 0;
+}
