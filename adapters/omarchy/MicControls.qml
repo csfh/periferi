@@ -102,13 +102,30 @@ Column {
       Caption { text: Mic.lookText(root.peri.look) }
     }
 
-    // --- right: colour and effects ------------------------------------------------------------
+    // --- right: effects, then colours -----------------------------------------------------------
     Column {
       id: rightCol
       width: leftCol.width
       spacing: Style.space(8)
 
-      Label { text: "Colour" }
+      Label { text: "Effect" }
+      Flow {
+        id: effectFlow
+        width: parent.width
+        spacing: Style.space(6)
+        Repeater {
+          model: Mic.effects
+          delegate: Button {
+            required property var modelData
+            bordered: true
+            selected: Mic.effectSelected(modelData.id, root.peri.look)
+            text: modelData.label
+            onClicked: root.peri.chooseEffect(modelData.id)
+          }
+        }
+      }
+
+      Label { text: Mic.maxColors(root.peri.look.effect) === 2 ? "First colour" : "Colour" }
       Flow {
         width: parent.width
         spacing: Style.space(8)
@@ -120,34 +137,50 @@ Column {
             height: Style.space(34)
             radius: Style.space(8)
             color: "#" + modelData.hex
-            readonly property bool saved: Mic.swatchSelected(modelData.hex, root.peri.look)
+            readonly property bool saved: Mic.swatchSelected(modelData.hex, root.peri.look, 1)
             border.width: saved ? 3 : 1
             border.color: saved ? Color.foreground : Color.muted
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.PointingHandCursor
-              onClicked: root.peri.chooseEffect("static", modelData.hex)
+              onClicked: root.peri.chooseColor(1, modelData.hex)
             }
           }
         }
       }
 
-      Label { text: "Effect" }
-      Row {
-        id: effectRow
+      // Breathing and starlight take a second colour, once they have a first.
+      Label { visible: Mic.showSecondColor(root.peri.look); text: "Second colour" }
+      Flow {
+        visible: Mic.showSecondColor(root.peri.look)
         width: parent.width
-        spacing: Style.space(6)
+        spacing: Style.space(8)
         Repeater {
-          model: Mic.effects.filter(function(e) { return !e.needsColor })
-          delegate: Button {
+          model: Mic.presets
+          delegate: Rectangle {
             required property var modelData
-            width: (effectRow.width - effectRow.spacing * 2) / 3
-            bordered: true
-            selected: Mic.effectSelected(modelData.id, root.peri.look)
-            text: modelData.label
-            onClicked: root.peri.chooseEffect(modelData.id, "")
+            width: Style.space(34)
+            height: Style.space(34)
+            radius: Style.space(8)
+            color: "#" + modelData.hex
+            readonly property bool saved: Mic.swatchSelected(modelData.hex, root.peri.look, 2)
+            border.width: saved ? 3 : 1
+            border.color: saved ? Color.foreground : Color.muted
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.peri.chooseColor(2, modelData.hex)
+            }
           }
         }
+      }
+
+      Button {
+        visible: Mic.showRandomColors(root.peri.look)
+        bordered: true
+        selected: root.peri.look.color === ""
+        text: "Random colours"
+        onClicked: root.peri.chooseRandomColors()
       }
     }
   }

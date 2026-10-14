@@ -9,7 +9,7 @@ import "cli.js" as Cli
 // imports nothing from the host shell and draws nothing; hosts bind to the properties below.
 //
 //   PeriMic { id: mic; moduleId: "razer-seiren-v3-chroma" }
-//   MyButton { onClicked: mic.chooseEffect("spectrum", "") }
+//   MyButton { onClicked: mic.chooseEffect("spectrum") }
 //   MyApply { onClicked: mic.apply() }
 //
 // The mic cannot be asked for its effect or colour, so the daemon keeps two saved LOOKS for it,
@@ -54,9 +54,23 @@ Scope {
     if (which === "unmuted" || which === "muted") root.editing = which
   }
 
-  // An effect button or a swatch: saves the look being edited with that effect. File only.
-  function chooseEffect(id, hex) {
-    var next = M.withEffect(root.look, id, hex)
+  // An effect button: saves the look being edited with that effect, keeping the colours the effect
+  // can use. File only.
+  function chooseEffect(id) {
+    var next = M.withEffect(root.look, id)
+    if (next !== null) saveLook(root.editing, next)
+  }
+
+  // A swatch: slot 1 is the first colour (it switches to "Colour" if the effect takes none), slot 2
+  // the second colour of breathing or starlight. File only.
+  function chooseColor(slot, hex) {
+    var next = M.withColor(root.look, slot, hex)
+    if (next !== null) saveLook(root.editing, next)
+  }
+
+  // "Random colours" for breathing or starlight. File only.
+  function chooseRandomColors() {
+    var next = M.withRandomColors(root.look)
     if (next !== null) saveLook(root.editing, next)
   }
 

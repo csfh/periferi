@@ -2,13 +2,14 @@
 .import "lighting.js" as L
 
 // The microphone pane's logic, free of UI and process code so it can be tested on its own.
-// It reads `peri status` and `peri look ... get` and builds the arguments of `peri look ... save`.
+// It reads `peri status`, `peri look ... get` and `peri audio ... get`, and builds the arguments of
+// `peri look ... save` and `peri audio ... set`.
 //
 // The pane edits two saved looks, Unmuted and Muted. A look is a set of the user's SETTINGS (an
-// effect, a colour for the static effect, a brightness), kept by the daemon because the mic can
-// neither report its effect or colour nor say which look is showing. Editing a look only saves it;
-// nothing reaches the mic until the user presses Apply. That keeps every write to the mic a
-// deliberate click, which matters because a write may be kept in the mic's own memory.
+// effect, up to two colours, a brightness), kept by the daemon because the mic can neither report
+// its effect or colour nor say which look is showing. Editing a look only saves it; nothing reaches
+// the mic until the user presses Apply. That keeps every write to the mic a deliberate click, which
+// matters because a write may be kept in the mic's own memory.
 
 // The module declares the protocol's one-byte range as its brightness limit.
 var maxBrightness = 255
@@ -19,15 +20,22 @@ var looks = [
   { id: "muted", label: "Muted look" }
 ]
 
-// The effect buttons. The highlighted one is the one saved in the look being edited.
+// The effect buttons. `colors` is how many colours the effect takes (0, 1 or 2): "static" needs
+// its one, "breathing" and "starlight" may have none (random colours), one or two. The highlighted
+// button is the one saved in the look being edited.
 var effects = [
-  { id: "static", label: "Colour", needsColor: true },
-  { id: "breathing", label: "Breathing", needsColor: false }, // pulses through random colours
-  { id: "spectrum", label: "Spectrum", needsColor: false },    // cycles through every colour
-  { id: "none", label: "Off", needsColor: false }
+  { id: "static", label: "Colour", colors: 1 },
+  { id: "breathing", label: "Breathing", colors: 2 },
+  { id: "spectrum", label: "Spectrum", colors: 0 },
+  { id: "wave", label: "Wave", colors: 0 },
+  { id: "wave-reverse", label: "Wave, other way", colors: 0 },
+  { id: "wheel", label: "Wheel", colors: 0 },
+  { id: "wheel-reverse", label: "Wheel, other way", colors: 0 },
+  { id: "starlight", label: "Starlight", colors: 2 },
+  { id: "none", label: "Off", colors: 0 }
 ]
 
-// Colour swatches for the "Colour" effect: fixed presets, not a drag-driven picker.
+// Colour swatches: fixed presets, not a drag-driven picker.
 var presets = [
   { name: "Red", hex: "ff0000" }, { name: "Orange", hex: "ff6a00" },
   { name: "Yellow", hex: "ffd800" }, { name: "Green", hex: "00ff40" },
@@ -37,11 +45,18 @@ var presets = [
 
 function validHex(hex) { return typeof hex === "string" && /^[0-9a-fA-F]{6}$/.test(hex) }
 
-function knownEffect(id) {
-  return effects.some(function(x) { return x.id === id })
+function effectInfo(id) {
+  return effects.filter(function(x) { return x.id === id })[0] || null
+}
+function knownEffect(id) { return effectInfo(id) !== null }
+
+// How many colours an effect takes: 0 for an unknown or colourless one.
+function maxColors(id) {
+  var e = effectInfo(id)
+  return e ? e.colors : 0
 }
 
-function emptyLook() { return { effect: "", color: "", brightness: -1 } }
+function emptyLook() { return { effect: "", color: "", color2: "", brightness: -1 } }
 
 // `peri status` prints "key   value" lines. Anything that is not a full answer, such as an empty
 // reply or a refusal, means the mic is offline. Only what the pane uses is read: brightness is the
@@ -56,14 +71,17 @@ function parseStatus(text) {
 
 // `peri look <module> get|save <which>` prints the look as "key   value" lines, with "unset" for an
 // effect or brightness that is not saved and "none" for no colour. Returns null if that is not a
-// look (a refusal, or nothing), so a failed read is never mistaken for an empty look.
+// look (a refusal, or nothing), so a failed read is never mistaken for an empty look. A field the
+// effect cannot have (a colour on a wave, a second colour without a first) is dropped.
 function parseLook(text) {
   var v = L.parseValues(text)
   if (!v.module || !v.look) return null
   var look = emptyLook()
   if (knownEffect(v.effect)) look.effect = v.effect
-  if (look.effect === "static" && validHex(v.color)) look.color = v.color.toLowerCase()
-  else if (look.effect === "static") look.effect = ""
+  var n = maxColors(look.effect)
+  if (n >= 1 && validHex(v.color)) look.color = v.color.toLowerCase()
+  if (look.effect === "static" && look.color === "") look.effect = ""   // static needs its colour
+  if (n === 2 && look.color !== "" && validHex(v.color2)) look.color2 = v.color2.toLowerCase()
   if (/^\d+$/.test(v.brightness || "") && Number(v.brightness) <= maxBrightness)
     look.brightness = Number(v.brightness)
   return look
@@ -71,13 +89,44 @@ function parseLook(text) {
 
 function brightnessPercent(value) { return L.valToPercent(value, maxBrightness) }
 
-// Pressing an effect button or a swatch: the look with that effect. "static" needs a colour (a
-// swatch); every other effect drops it. null for an unknown effect or a missing or bad colour.
-function withEffect(look, id, hex) {
-  var e = effects.filter(function(x) { return x.id === id })[0]
-  if (!e) return null
-  if (e.needsColor && !validHex(hex)) return null
-  return { effect: id, color: e.needsColor ? hex.toLowerCase() : "", brightness: look.brightness }
+function copyLook(look, changes) {
+  var out = { effect: look.effect, color: look.color, color2: look.color2, brightness: look.brightness }
+  for (var k in changes) out[k] = changes[k]
+  return out
+}
+
+// Pressing an effect button: the look with that effect. The colours the new effect can use are
+// kept and the rest dropped, and "Colour" with no colour yet starts on white so it can be saved.
+// null for an unknown effect.
+function withEffect(look, id) {
+  var n = maxColors(id)
+  if (!knownEffect(id)) return null
+  var color = n >= 1 ? look.color : ""
+  var color2 = n === 2 && color !== "" ? look.color2 : ""
+  if (id === "static" && color === "") color = "ffffff"
+  return copyLook(look, { effect: id, color: color, color2: color2 })
+}
+
+// Pressing a swatch in the first row: colours the current effect if it takes a colour, else
+// switches to "Colour" (static) in that colour. In the second row (slot 2): the second colour,
+// only for an effect that takes two and already has a first. null for a bad colour or slot.
+function withColor(look, slot, hex) {
+  if (!validHex(hex)) return null
+  hex = hex.toLowerCase()
+  if (slot === 2) {
+    if (maxColors(look.effect) !== 2 || look.color === "") return null
+    return copyLook(look, { color2: hex })
+  }
+  if (slot !== 1) return null
+  if (maxColors(look.effect) >= 1)
+    return copyLook(look, { color: hex, color2: maxColors(look.effect) === 2 ? look.color2 : "" })
+  return copyLook(look, { effect: "static", color: hex, color2: "" })
+}
+
+// "Random colours": breathing or starlight with no colour chosen. null for any other effect.
+function withRandomColors(look) {
+  if (maxColors(look.effect) !== 2) return null
+  return copyLook(look, { color: "", color2: "" })
 }
 
 // A released slider: the look with that brightness, or null when it would change nothing (so
@@ -85,15 +134,17 @@ function withEffect(look, id, hex) {
 function withBrightness(look, percent) {
   var value = L.percentToVal(percent, maxBrightness)
   if (value === look.brightness) return null
-  return { effect: look.effect, color: look.color, brightness: value }
+  return copyLook(look, { brightness: value })
 }
 
 // The arguments of `peri look <module> ...` that save a whole look. A field that is not set is
 // left out, which the daemon reads as "not set": the look is replaced, never merged.
 function saveArgs(which, look) {
   var args = ["save", which]
+  var n = maxColors(look.effect)
   if (look.effect !== "") args.push("effect=" + look.effect)
-  if (look.effect === "static" && look.color !== "") args.push("color=" + look.color)
+  if (n >= 1 && look.color !== "") args.push("color=" + look.color)
+  if (n === 2 && look.color !== "" && look.color2 !== "") args.push("color2=" + look.color2)
   if (look.brightness >= 0) args.push("brightness=" + look.brightness)
   return args
 }
@@ -103,12 +154,20 @@ function applyArgs(which) { return ["apply", which] }
 // Is there anything to send? An empty look has nothing to apply.
 function canApply(look) { return !!look && (look.effect !== "" || look.brightness >= 0) }
 
+// Is the second row of swatches useful? Only for an effect that takes two colours and has a first.
+function showSecondColor(look) { return !!look && maxColors(look.effect) === 2 && look.color !== "" }
+
+// Does the "Random colours" button apply? Breathing and starlight, with or without colours.
+function showRandomColors(look) { return !!look && maxColors(look.effect) === 2 }
+
 function effectSelected(id, look) {
   return !!look && look.effect !== "" && look.effect === id
 }
 
-function swatchSelected(hex, look) {
-  return !!look && look.effect === "static" && validHex(hex) && look.color === hex.toLowerCase()
+// Is this swatch the saved colour in that slot (1 or 2)?
+function swatchSelected(hex, look, slot) {
+  if (!look || !validHex(hex)) return false
+  return (slot === 2 ? look.color2 : look.color) === hex.toLowerCase()
 }
 
 function lookLabel(which) {
@@ -121,8 +180,12 @@ function lookText(look) {
   if (!canApply(look)) return "Nothing saved in this look yet"
   var parts = []
   if (look.effect !== "") {
-    var e = effects.filter(function(x) { return x.id === look.effect })[0]
-    parts.push(look.effect === "static" ? "colour " + look.color : e.label.toLowerCase())
+    var name = effectInfo(look.effect).label.toLowerCase()
+    if (look.effect === "static") name = "colour " + look.color
+    else if (look.color !== "") name += ", " + (look.color2 !== "" ? "colours " + look.color + " and " + look.color2
+                                                                   : "colour " + look.color)
+    else if (maxColors(look.effect) === 2) name += ", random colours"
+    parts.push(name)
   }
   if (look.brightness >= 0) parts.push("brightness " + brightnessPercent(look.brightness) + "%")
   return "Saved: " + parts.join(", ")
