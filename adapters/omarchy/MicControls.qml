@@ -54,15 +54,16 @@ Column {
   }
 
   // --- which look is being edited -----------------------------------------------------------
+  // Two normal-sized segments, outlined so both read as buttons and not only the chosen one.
   Row {
     id: lookRow
-    width: parent.width
     spacing: Style.space(6)
     Repeater {
       model: Mic.looks
       delegate: Button {
         required property var modelData
-        width: (lookRow.width - lookRow.spacing) / 2
+        width: Style.space(170)
+        bordered: true
         selected: root.peri.editing === modelData.id
         text: modelData.label
         onClicked: root.peri.selectLook(modelData.id)
@@ -141,6 +142,7 @@ Column {
           delegate: Button {
             required property var modelData
             width: (effectRow.width - effectRow.spacing * 2) / 3
+            bordered: true
             selected: Mic.effectSelected(modelData.id, root.peri.look)
             text: modelData.label
             onClicked: root.peri.chooseEffect(modelData.id, "")
@@ -157,7 +159,8 @@ Column {
 
     Button {
       id: applyButton
-      width: Style.space(160)
+      width: Style.space(170)
+      bordered: true
       enabled: root.peri.canApply
       opacity: enabled ? 1 : 0.4
       text: "Apply"
