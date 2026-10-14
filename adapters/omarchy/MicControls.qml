@@ -119,7 +119,7 @@ Column {
             required property var modelData
             bordered: true
             selected: Mic.effectSelected(modelData.id, root.peri.look)
-            text: Mic.effectLabel(modelData)
+            text: modelData.label
             onClicked: root.peri.chooseEffect(modelData.id)
           }
         }
@@ -154,7 +154,7 @@ Column {
       }
 
       // Breathing takes a second colour, once it has a first.
-      Label { visible: Mic.showSecondColor(root.peri.look); text: "Second colour (untested)" }
+      Label { visible: Mic.showSecondColor(root.peri.look); text: "Second colour" }
       Flow {
         visible: Mic.showSecondColor(root.peri.look)
         width: parent.width
