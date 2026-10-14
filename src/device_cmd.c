@@ -13,6 +13,7 @@
 #include "audio.h"
 #include "controls.h"
 #include "module.h"
+#include "razer90_dev.h"
 #include "razer_dev.h"
 #include "scan.h"
 #include "store.h"
@@ -37,12 +38,14 @@ static void err(char *reply, size_t size, const char *what, const char *id)
     snprintf(reply, size, "err %s: %s\n", id, what);
 }
 
-// Resolve a module id to an open device. Returns an fd, or -1 with an "err ..." reply.
-static int open_module_device(const char *id, struct peri_module *module, char *reply, size_t size)
+// Resolve an installed module id to its module and the hidraw node of its connected device.
+// False, with an "err ..." reply, if the id is bad, not installed, not connected or ambiguous.
+static bool resolve_module(const char *id, struct peri_module *module, char *node, size_t node_size,
+                           char *reply, size_t size)
 {
     if (!peri_module_id_valid(id)) {
         snprintf(reply, size, "err usage: <module-id> (see `peri modules`)\n");
-        return -1;
+        return false;
     }
 
     char dir[PATH_MAX];
@@ -52,34 +55,48 @@ static int open_module_device(const char *id, struct peri_module *module, char *
     struct peri_device devs[32];
     size_t dev_count = peri_scan(devs, 32);
 
-    char node[32];
     const struct peri_module *m;
-    switch (peri_module_select(devs, dev_count, installed, installed_count, id, node, sizeof node,
+    switch (peri_module_select(devs, dev_count, installed, installed_count, id, node, node_size,
                                &m)) {
     case PERI_SELECT_OK:
         break;
     case PERI_SELECT_NOT_INSTALLED:
         err(reply, size, "no such installed module; run `peri use <id>` (see `peri modules`)", id);
-        return -1;
+        return false;
     case PERI_SELECT_NOT_CONNECTED:
         err(reply, size, "the device is not connected", id);
-        return -1;
+        return false;
     case PERI_SELECT_AMBIGUOUS:
         err(reply, size, "more than one device matches; choosing one is not supported yet", id);
-        return -1;
-    }
-    if (strcmp(m->engine, "razer") != 0) {
-        err(reply, size, "this module has nothing to read or set yet", id);
-        return -1;
-    }
-
-    int fd = razer_open(node);
-    if (fd < 0) {
-        err(reply, size, "cannot open the device (see `journalctl --user -u perid`)", id);
-        return -1;
+        return false;
     }
     *module = *m;
+    return true;
+}
+
+// Open the Seiren-style device of a resolved module. Returns an fd, or -1 with an "err ..." reply.
+static int open_razer(const struct peri_module *m, const char *node, char *reply, size_t size)
+{
+    if (strcmp(m->engine, "razer") != 0) {
+        err(reply, size,
+            strcmp(m->engine, "razer90") == 0 ? "this module can only be read for now (`peri status`)"
+                                              : "this module has nothing to read or set yet",
+            m->id);
+        return -1;
+    }
+    int fd = razer_open(node);
+    if (fd < 0)
+        err(reply, size, "cannot open the device (see `journalctl --user -u perid`)", m->id);
     return fd;
+}
+
+// Resolve a module id to an open Seiren-style device. Returns an fd, or -1 with an "err ..." reply.
+static int open_module_device(const char *id, struct peri_module *module, char *reply, size_t size)
+{
+    char node[32];
+    if (!resolve_module(id, module, node, sizeof node, reply, size))
+        return -1;
+    return open_razer(module, node, reply, size);
 }
 
 static void first_word(const char *args, char *out, size_t size)
@@ -88,13 +105,39 @@ static void first_word(const char *args, char *out, size_t size)
     out[strcspn(out, " \n")] = '\0';
 }
 
+// The DeathAdder's status: what it says to the one read the daemon sends it, a firmware get.
+// The firmware bytes are shown raw: what they mean is not established.
+static void status_razer90(const char *id, const char *node, char *reply, size_t size)
+{
+    int fd = razer90_open(node);
+    if (fd < 0) {
+        err(reply, size, "cannot open the device (see `journalctl --user -u perid`)", id);
+        return;
+    }
+    uint8_t firmware[2];
+    bool ok = razer90_firmware(fd, firmware) == 0;
+    close(fd);
+    if (!ok) {
+        err(reply, size, "the device did not answer a read query", id);
+        return;
+    }
+    snprintf(reply, size, "ok module=%s firmware=%02x%02x\n", id, firmware[0], firmware[1]);
+}
+
 void status_handle(const char *args, char *reply, size_t size)
 {
     char id[64];
     first_word(args, id, sizeof id);
 
+    char node[32];
     struct peri_module m;
-    int fd = open_module_device(id, &m, reply, size);
+    if (!resolve_module(id, &m, node, sizeof node, reply, size))
+        return;
+    if (strcmp(m.engine, "razer90") == 0) {
+        status_razer90(m.id, node, reply, size);
+        return;
+    }
+    int fd = open_razer(&m, node, reply, size);
     if (fd < 0)
         return;
     uint8_t firmware[2], brightness;

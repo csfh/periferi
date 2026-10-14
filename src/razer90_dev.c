@@ -75,3 +75,17 @@ int razer90_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8
     }
     return last;
 }
+
+int razer90_firmware(int fd, uint8_t version[2])
+{
+    struct razer90_reply reply;
+    uint8_t raw[RAZER90_HIDRAW_LEN];
+    int got;
+    int rc = razer90_call(fd, 0x00, 0x81, 2, nullptr, &reply, raw, &got);
+    if (rc < 0)
+        return rc;
+    if (reply.status != RAZER_STATUS_OK || reply.len < 2)
+        return RAZER_ERR_STATUS;
+    memcpy(version, reply.args, 2);
+    return 0;
+}

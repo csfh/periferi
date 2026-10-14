@@ -22,3 +22,8 @@ int razer90_open(const char *node);
 // razer_error for a malformed one, or RAZER_ERR_IO / RAZER_ERR_NO_REPLY.
 int razer90_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t *args,
                  struct razer90_reply *reply, uint8_t raw[RAZER90_HIDRAW_LEN], int *got);
+
+// Firmware get (class 0x00, command 0x81, size 2): the two bytes the mouse answers with. What they
+// mean is not established (it answered 02 00 on 2026-10-14). 0 on an ok reply of at least two
+// bytes, else a razer_error (RAZER_ERR_STATUS if the device said something other than ok).
+int razer90_firmware(int fd, uint8_t version[2]);

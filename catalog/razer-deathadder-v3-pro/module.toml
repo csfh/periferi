@@ -5,9 +5,9 @@
 # so it may be the receiver. The vendor feature report sits inside the mouse's own collection,
 # so the usage to match is the plain mouse one (0001:0002), not a vendor page.
 #
-# No capabilities and no limits: the firmware can be read by hand with the CLI
-# (`peri razer90 <node> firmware`), and the daemon refuses this engine everywhere else, so
-# nothing in the panel or the daemon drives the device yet.
+# No capabilities and no limits: the daemon reads this device only for `peri status` (firmware),
+# and refuses it for everything else, so nothing in the panel drives the device yet. The CLI can
+# also read the firmware by hand (`peri razer90 <node> firmware`).
 
 schema = 1
 id = "razer-deathadder-v3-pro"
