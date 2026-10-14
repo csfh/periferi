@@ -1,0 +1,1 @@
+../../../adapters/omarchy/MicControls.qml

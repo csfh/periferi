@@ -6,11 +6,12 @@ import "peri/menu.js" as Menu
 // The two panes of the Peripherals panel: every device on the left, the selected device's
 // controls on the right. A plain Item, so it can also be drawn on its own (see
 // tests/qml/omarchy-preview). `light` and `devs` are the generic core's PeriLighting and
-// PeriDevices; nothing here computes anything, it only lays them out.
+// PeriDevices (and `mic`, PeriMic, for a microphone); nothing here computes anything, it only lays them out.
 Item {
   id: content
 
   required property var light
+  required property var mic
   required property var devs
   property QtObject bar: null
 
@@ -263,8 +264,17 @@ Item {
     }
     Note {
       visible: content.selected !== null && content.selected.connected
-               && !Menu.drivesKeyboard(content.selected)
+               && !Menu.drivesKeyboard(content.selected) && content.selected.engine !== "razer"
       text: "This device has no controls in the panel yet. In a terminal, `peri status " + (content.selected ? content.selected.module : "") + "` reads it."
+    }
+
+    MicControls {
+      visible: content.selected !== null && content.selected.connected
+               && content.selected.engine === "razer"
+      width: parent.width
+      peri: content.mic
+      bar: content.bar
+      moduleId: content.selected && content.selected.engine === "razer" ? content.selected.module : ""
     }
 
     LightingControls {

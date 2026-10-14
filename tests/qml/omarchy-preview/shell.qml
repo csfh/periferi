@@ -14,6 +14,12 @@ import "peri"
 //   cd tests/qml/omarchy-preview && for d in Commons Ui services; do ln -s /usr/share/omarchy/shell/$d .; done
 ShellRoot {
   PeriLighting { id: lighting; interval: 0 }
+  // PERI_PREVIEW_PERI: a peri to run instead (e.g. a wrapper that logs what the panel asks for).
+  PeriMic {
+    id: mic
+    periPath: Quickshell.env("PERI_PREVIEW_PERI") !== "" ? Quickshell.env("PERI_PREVIEW_PERI")
+                                                         : Quickshell.env("HOME") + "/.local/bin/peri"
+  }
 
   PeriDevices { id: devices; interval: 0 }
 
@@ -32,6 +38,8 @@ ShellRoot {
       anchors.top: parent.top
       anchors.margins: 12
       light: lighting
+      mic: mic
+      selectedKey: Quickshell.env("PERI_PREVIEW_SELECT") // a device's group, to show its pane
       devs: devices
     }
   }

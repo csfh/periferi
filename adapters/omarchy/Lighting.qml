@@ -16,6 +16,7 @@ Panel {
   implicitHeight: button.implicitHeight
 
   PeriLighting { id: lightingState }
+  PeriMic { id: micState }
   PeriDevices { id: devicesState }
 
   BarIconButton {
@@ -65,6 +66,7 @@ Panel {
         anchors.right: parent.right
         anchors.top: parent.top
         light: lightingState
+        mic: micState
         devs: devicesState
         bar: root.bar
       }
