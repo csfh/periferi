@@ -727,13 +727,14 @@ static int cmd_xap(const char *arg, const char *route_hex)
 }
 
 struct mod_row { // one module, as reported by perid's "modules"
-    char id[49], status[16], access[8], version[33], name[65];
+    char id[49], status[16], access[8], engine[16], version[33], name[65];
     unsigned vid, pid;
 };
 
-// [{"id":..., "name":..., "version":..., "vid":"359b", "pid":"0009",
+// [{"id":..., "name":..., "version":..., "engine":"xap|razer", "vid":"359b", "pid":"0009",
 //   "status":"installed|available", "access":"ok|setup"|null}]
 // access: "setup" means `peri setup` has to update the udev rule for this module's device.
+// engine: which built-in protocol drives the device, so a UI can tell a keyboard from a microphone.
 static void print_modules_json(const struct mod_row *rows, size_t count)
 {
     fputc('[', stdout);
@@ -746,6 +747,8 @@ static void print_modules_json(const struct mod_row *rows, size_t count)
         peri_json_string(stdout, r->name);
         fputs(", \"version\": ", stdout);
         peri_json_string(stdout, r->version);
+        fputs(", \"engine\": ", stdout);
+        peri_json_string(stdout, r->engine);
         printf(", \"vid\": \"%04x\", \"pid\": \"%04x\", \"status\": \"%s\", \"access\": ", r->vid,
                r->pid, r->status);
         if (strcmp(r->access, "-") == 0)
@@ -832,8 +835,8 @@ static int cmd_modules(int argc, char **argv)
     size_t count = 0;
     for (char *line = strtok(reply, "\n"); line && count < 32; line = strtok(nullptr, "\n")) {
         struct mod_row *r = &rows[count];
-        if (sscanf(line, "%48s %15s %7s %x:%x %32s %64[^\n]", r->id, r->status, r->access, &r->vid,
-                   &r->pid, r->version, r->name) == 7)
+        if (sscanf(line, "%48s %15s %7s %15s %x:%x %32s %64[^\n]", r->id, r->status, r->access,
+                   r->engine, &r->vid, &r->pid, r->version, r->name) == 8)
             count++;
     }
 

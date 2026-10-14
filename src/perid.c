@@ -84,7 +84,7 @@ static bool has_module(const struct peri_module *list, size_t count, const char 
     return false;
 }
 
-// One module per line: "<id> <installed|available> <access> <vid>:<pid> <version> <name>".
+// One module per line: "<id> <installed|available> <access> <engine> <vid>:<pid> <version> <name>".
 // access is "ok" when the installed udev rule already covers the module's device, "setup"
 // when `peri setup` has to update the rule, and "-" for modules that are not installed.
 // Everything in the bundled catalog, plus anything installed that is not in it.
@@ -108,9 +108,9 @@ static void send_modules(int client)
             continue;
         bool is_installed = has_module(installed, installed_count, m->id);
         const char *access = !is_installed ? "-" : rules && peri_udev_covers(rules, m) ? "ok" : "setup";
-        int n = snprintf(buf + len, sizeof buf - len, "%s %s %s %04x:%04x %s %s\n", m->id,
-                         is_installed ? "installed" : "available", access, m->vid, m->pid,
-                         m->version, m->name);
+        int n = snprintf(buf + len, sizeof buf - len, "%s %s %s %s %04x:%04x %s %s\n", m->id,
+                         is_installed ? "installed" : "available", access, m->engine, m->vid,
+                         m->pid, m->version, m->name);
         if (n < 0 || (size_t)n >= sizeof buf - len)
             break;
         len += (size_t)n;

@@ -16,6 +16,7 @@ TestCase {
              access: access === undefined ? (status === "installed" ? "ok" : null) : access }
   }
   function keys(list) { return list.map(function(e) { return e.key }) }
+  function withEngine(m, engine) { m.engine = engine; return m }
 
   function test_installed_and_connected() {
     var m = Menu.build([dev("g1", "Drop CTRL v2", "installed", "drop-ctrl-v2")],
@@ -28,6 +29,31 @@ TestCase {
   }
 
   // After `peri remove`: the keyboard is plugged in and its module is available.
+  // The engine travels with every kind of entry, so the panel can tell a keyboard from a mic.
+  function test_engine_reaches_every_entry() {
+    var mic = withEngine(mod("mic", "Mic", "installed"), "razer")
+    var kb = withEngine(mod("drop-ctrl-v2", "Drop CTRL v2", "installed"), "xap")
+    var avail = withEngine(mod("other", "Other", "available"), "razer")
+    var m = Menu.build([dev("g1", "Mic", "installed", "mic")], [mic, kb, avail])
+    compare(m.managed.filter(function(e) { return e.key === "g1" })[0].engine, "razer")
+    compare(m.managed.filter(function(e) { return e.module === "drop-ctrl-v2" })[0].engine, "xap")
+    compare(m.installable[0].engine, "razer")
+  }
+
+  // Only the XAP engine gets the keyboard controls. An unknown engine (a list that could not be
+  // read) keeps them, so the keyboard does not lose its panel; anything else never gets them.
+  function test_drives_keyboard() {
+    compare(Menu.drivesKeyboard({ engine: "xap" }), true)
+    compare(Menu.drivesKeyboard({ engine: "" }), true)
+    compare(Menu.drivesKeyboard({ engine: "razer" }), false)
+    compare(Menu.drivesKeyboard({ engine: "something-new" }), false)
+    compare(Menu.drivesKeyboard(null), false)
+    // A device whose module is missing from the list has engine "".
+    var m = Menu.build([dev("g1", "Drop CTRL v2", "installed", "drop-ctrl-v2")], [])
+    compare(m.managed[0].engine, "")
+    compare(Menu.drivesKeyboard(m.managed[0]), true)
+  }
+
   function test_available_goes_to_installable_only() {
     var m = Menu.build([dev("g1", "Drop CTRL v2", "available", "drop-ctrl-v2")],
                        [mod("drop-ctrl-v2", "Drop CTRL v2", "available")])

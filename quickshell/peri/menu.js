@@ -35,6 +35,18 @@ function needsSetup(module) {
   return !!module && module.access === "setup"
 }
 
+// The protocol engine of a module from `peri modules --json` ("xap", "razer"), "" if unknown.
+function engineOf(module) {
+  return module && module.engine ? module.engine : ""
+}
+
+// Do the keyboard controls (PeriLighting, `peri rgb`) belong to this entry? Only for the XAP
+// engine, or when the engine is unknown (the list could not be read): the keyboard keeps its
+// controls, while every other kind of device is never handed them.
+function drivesKeyboard(entry) {
+  return !!entry && (entry.engine === "xap" || entry.engine === "")
+}
+
 // devices: `peri list --json` (hidden ones are left out by peri, and skipped here again).
 // modules: `peri modules --json`.
 //
@@ -59,7 +71,8 @@ function build(devices, modules) {
 
   devices.forEach(function(d) {
     if (d.hidden) return
-    var entry = { key: d.group, name: d.name, vid: d.vid, pid: d.pid, module: d.module }
+    var entry = { key: d.group, name: d.name, vid: d.vid, pid: d.pid, module: d.module,
+                  engine: engineOf(known[d.module]) }
     if (d.status === "installed") {
       driven[d.module] = true
       managed.push(Object.assign({ connected: true, setup: needsSetup(known[d.module]) }, entry))
@@ -73,10 +86,11 @@ function build(devices, modules) {
   modules.forEach(function(m) {
     if (m.status === "installed" && !driven[m.id]) {
       managed.push({ key: "module:" + m.id, name: m.name, vid: m.vid, pid: m.pid,
-                     module: m.id, connected: false, setup: needsSetup(m) })
+                     module: m.id, engine: engineOf(m), connected: false, setup: needsSetup(m) })
     } else if (m.status === "available") {
       installable.push({ key: "module:" + m.id, id: m.id, name: m.name, version: m.version,
-                         vid: m.vid, pid: m.pid, connected: plugged[m.id] === true })
+                         vid: m.vid, pid: m.pid, engine: engineOf(m),
+                         connected: plugged[m.id] === true })
     }
   })
 

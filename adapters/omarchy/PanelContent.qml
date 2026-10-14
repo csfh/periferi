@@ -257,12 +257,19 @@ Item {
       text: "This device is not connected, so there is nothing to control. The module stays installed."
     }
     Note {
-      visible: content.selected !== null && content.selected.connected && !light.online
+      visible: content.selected !== null && content.selected.connected
+               && Menu.drivesKeyboard(content.selected) && !light.online
       text: "The keyboard is not answering. Is it plugged in and is the peri daemon running?"
+    }
+    Note {
+      visible: content.selected !== null && content.selected.connected
+               && !Menu.drivesKeyboard(content.selected)
+      text: "This device has no controls in the panel yet. In a terminal, `peri status " + (content.selected ? content.selected.module : "") + "` reads it."
     }
 
     LightingControls {
-      visible: content.selected !== null && content.selected.connected && light.online
+      visible: content.selected !== null && content.selected.connected
+               && Menu.drivesKeyboard(content.selected) && light.online
       width: parent.width
       peri: light
       bar: content.bar
