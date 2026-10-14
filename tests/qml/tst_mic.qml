@@ -117,6 +117,21 @@ TestCase {
     verify(!Mic.showSecondColor(null))
   }
 
+  // Swatches are hidden for effects that take no colour, and shown where they matter.
+  function test_colours_are_hidden_for_effects_without_them() {
+    verify(!Mic.showColors(look("spectrum", "", -1)))
+    verify(!Mic.showColors(look("wave", "", -1)))
+    verify(!Mic.showColors(look("wave-reverse", "", -1)))
+    verify(!Mic.showColors(look("wheel", "", -1)))
+    verify(!Mic.showColors(look("wheel-reverse", "", -1)))
+    verify(!Mic.showColors(look("none", "", -1)))
+    verify(Mic.showColors(look("static", "0000ff", -1)))
+    verify(Mic.showColors(look("breathing", "", -1)))
+    verify(Mic.showColors(look("starlight", "", -1)))
+    verify(Mic.showColors(look("", "", -1)))     // nothing chosen yet: a swatch starts the Colour effect
+    verify(Mic.showColors(null))
+  }
+
   function test_with_brightness() {
     compare(Mic.withBrightness(look("static", "0000ff", 0), 40), look("static", "0000ff", 102))
     compare(Mic.withBrightness(look("", "", -1), 100), look("", "", 255))

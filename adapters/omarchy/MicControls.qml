@@ -125,8 +125,12 @@ Column {
         }
       }
 
-      Label { text: Mic.maxColors(root.peri.look.effect) === 2 ? "First colour" : "Colour" }
+      Label {
+        visible: Mic.showColors(root.peri.look)
+        text: Mic.maxColors(root.peri.look.effect) === 2 ? "First colour" : "Colour"
+      }
       Flow {
+        visible: Mic.showColors(root.peri.look)
         width: parent.width
         spacing: Style.space(8)
         Repeater {

@@ -17,6 +17,21 @@
 #include "scan.h"
 #include "store.h"
 
+// What went wrong with a frame the device was sent, in the device's own words: its status if it
+// answered ("refused: not supported"), else that it did not answer or could not be written to.
+static void device_said(char *buf, size_t size, int rc)
+{
+    char tmp[16];
+    if (rc == RAZER_ERR_STATUS)
+        snprintf(buf, size, "the device answered \"%s\"", razer_status_name(razer_last_status(), tmp));
+    else if (rc == RAZER_ERR_NO_REPLY)
+        snprintf(buf, size, "the device did not answer");
+    else if (rc == RAZER_ERR_IO)
+        snprintf(buf, size, "the frame could not be written to the device");
+    else
+        snprintf(buf, size, "the device sent a reply that did not check out (%d)", rc);
+}
+
 static void err(char *reply, size_t size, const char *what, const char *id)
 {
     snprintf(reply, size, "err %s: %s\n", id, what);
@@ -217,10 +232,14 @@ void set_handle(const char *args, char *reply, size_t size)
         int rc = razer_set_effect_opts(fd, RAZER_STORE_NONE, (uint8_t)effect_id_checked, &opts);
         close(fd);
         if (rc != 0) {
-            err(reply, size, "the device did not accept the effect", id);
+            char why[96], text[160];
+            device_said(why, sizeof why, rc);
+            snprintf(text, sizeof text, "the effect was not accepted: %s", why);
+            err(reply, size, text, id);
             return;
         }
-        snprintf(reply, size, "ok module=%s sent=%s color=%s storage=none readback=unavailable\n",
+        snprintf(reply, size,
+                 "ok module=%s sent=%s color=%s device=ok storage=none readback=unavailable\n",
                  m.id, effect_name, color ? (color2 ? "two" : "yes") : "no");
         return;
     }
@@ -395,10 +414,14 @@ void look_handle(const char *args, char *reply, size_t size)
     int fd = open_module_device(id, &dev, reply, size);
     if (fd < 0)
         return;
-    if (l.effect[0]
-        && razer_set_effect_opts(fd, RAZER_STORE_NONE, (uint8_t)effect_checked, &opts) != 0) {
+    int effect_rc = l.effect[0]
+        ? razer_set_effect_opts(fd, RAZER_STORE_NONE, (uint8_t)effect_checked, &opts) : 0;
+    if (effect_rc != 0) {
         close(fd);
-        err(reply, size, "the device did not accept the effect; nothing else was sent", id);
+        char why[96], text[200];
+        device_said(why, sizeof why, effect_rc);
+        snprintf(text, sizeof text, "the effect was not accepted (%s); nothing else was sent", why);
+        err(reply, size, text, id);
         return;
     }
     uint8_t now = 0;

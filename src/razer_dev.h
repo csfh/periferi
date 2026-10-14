@@ -25,6 +25,10 @@ int razer_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t
 #define RAZER_STORE_NONE 0x00  // asks for "now only"; the Seiren kept the value anyway (2026-10-14)
 #define RAZER_STORE_FLASH 0x01 // the value the device keeps; writing it wears its memory
 
+// The status byte of the last reply a query in this file got, whether it was ok or not (0 if the
+// last one got none). It is what the device said, so an error can say so.
+uint8_t razer_last_status(void);
+
 // Both return 0, or a razer_error. Firmware: class 0x00, command 0x81 (what the bytes mean is
 // unproven). Brightness: class 0x0f, command 0x84 (get) or 0x04 (set), 0..255, LED id 0.
 int razer_firmware(int fd, uint8_t version[2]);

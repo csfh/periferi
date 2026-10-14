@@ -154,6 +154,11 @@ function applyArgs(which) { return ["apply", which] }
 // Is there anything to send? An empty look has nothing to apply.
 function canApply(look) { return !!look && (look.effect !== "" || look.brightness >= 0) }
 
+// Do the colour swatches belong here? Not for an effect that takes no colour (spectrum, wave,
+// wheel, off), where they would only suggest a choice that does nothing. With no effect chosen yet
+// they stay, because picking a colour is a way to start: it selects the Colour effect.
+function showColors(look) { return !look || look.effect === "" || maxColors(look.effect) >= 1 }
+
 // Is the second row of swatches useful? Only for an effect that takes two colours and has a first.
 function showSecondColor(look) { return !!look && maxColors(look.effect) === 2 && look.color !== "" }
 

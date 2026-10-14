@@ -75,14 +75,23 @@ int razer_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t
     return RAZER_ERR_NO_REPLY;
 }
 
+static uint8_t last_status;
+
+uint8_t razer_last_status(void)
+{
+    return last_status;
+}
+
 static int query(int fd, uint8_t cls, uint8_t cmd, size_t size, const uint8_t *args, size_t want,
                  struct razer_reply *reply)
 {
     uint8_t raw[RAZER_REPORT_LEN];
     int got;
+    last_status = 0;
     int rc = razer_call(fd, cls, cmd, size, args, reply, raw, &got);
     if (rc < 0)
         return rc;
+    last_status = reply->status;
     return reply->status == RAZER_STATUS_OK && reply->len >= want ? 0 : RAZER_ERR_STATUS;
 }
 

@@ -2,6 +2,7 @@
 
 #include "razer.h"
 
+#include <stdio.h>
 #include <string.h>
 
 static uint8_t xor_bytes(const uint8_t *p, size_t from, size_t to)
@@ -149,4 +150,18 @@ int razer_effect_lookup(const char *name, bool *reverse)
 int razer_effect_id(const char *name)
 {
     return razer_effect_lookup(name, nullptr);
+}
+
+const char *razer_status_name(uint8_t status, char buf[16])
+{
+    switch (status) {
+    case RAZER_STATUS_BUSY: return "busy";
+    case RAZER_STATUS_OK: return "ok";
+    case RAZER_STATUS_FAILURE: return "failed";
+    case RAZER_STATUS_TIMEOUT: return "timed out";
+    case RAZER_STATUS_NOT_SUPPORTED: return "not supported";
+    default:
+        snprintf(buf, 16, "status 0x%02x", status);
+        return buf;
+    }
 }

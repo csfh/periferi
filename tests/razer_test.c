@@ -162,6 +162,15 @@ int main(void)
     check(razer_effect_id("starlight") == RAZER_EFFECT_STARLIGHT && razer_effect_id("fire") == -1
               && razer_effect_id(nullptr) == -1 && razer_effect_id("wave-") == -1, "names");
 
+    // The device's words for a status.
+    char sbuf[16];
+    check(strcmp(razer_status_name(RAZER_STATUS_OK, sbuf), "ok") == 0, "status ok");
+    check(strcmp(razer_status_name(RAZER_STATUS_NOT_SUPPORTED, sbuf), "not supported") == 0, "status not supported");
+    check(strcmp(razer_status_name(RAZER_STATUS_BUSY, sbuf), "busy") == 0, "status busy");
+    check(strcmp(razer_status_name(RAZER_STATUS_FAILURE, sbuf), "failed") == 0, "status failed");
+    check(strcmp(razer_status_name(RAZER_STATUS_TIMEOUT, sbuf), "timed out") == 0, "status timed out");
+    check(strcmp(razer_status_name(0x42, sbuf), "status 0x42") == 0, "unknown status");
+
     // Spectrum, storage 00, as a whole frame: 52 ^ 06 ^ 0f ^ 02 ^ 03 = 5a.
     check(razer_effect_args(0, RAZER_EFFECT_SPECTRUM, nullptr, a) == 6
               && razer_encode(frame, 0x52, 0x0f, 0x02, a, 6) == 0 && frame[6] == 6

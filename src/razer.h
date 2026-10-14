@@ -125,6 +125,10 @@ void razer_state_apply(struct razer_state *state, const struct razer_event *ev);
 int razer_encode(uint8_t frame[RAZER_REPORT_LEN], uint8_t transaction, uint8_t cls, uint8_t cmd,
                  const uint8_t *args, size_t len);
 
+// The device's own word for a reply status: "busy", "ok", "failed", "timed out", "not supported",
+// or "status 0xNN" for a value this program does not know.
+const char *razer_status_name(uint8_t status, char buf[16]);
+
 // Check a reply frame against the request it answers and decode it. Returns 0 when the
 // frame is well formed (look at reply->status for what the device said), else a razer_error.
 int razer_decode(const uint8_t frame[RAZER_REPORT_LEN], uint8_t cls, uint8_t cmd,
