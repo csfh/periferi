@@ -14,8 +14,7 @@ static void check(bool ok, const char *what)
 }
 
 // Every vector here is worked out by hand from the layout in razer90.h. Nothing has been read
-// from a real mouse yet, so none of them proves the device agrees; they pin the codec's own rules.
-// In particular the reply vectors assume a reply carries the request's checksum rule (razer90.h).
+// from a real mouse, except the first one below; they pin the codec's own rules.
 
 // A reply for firmware get (class 0x00, command 0x81) with arguments 01 02. The checksum covers
 // bytes 2..87: size 02 ^ command 81 ^ 01 ^ 02 = 80. The status and transaction are not in it.
@@ -34,6 +33,22 @@ static void firmware_reply(uint8_t frame[RAZER90_LEN], uint8_t status, uint8_t t
 int main(void)
 {
     uint8_t frame[RAZER90_LEN];
+
+    // The firmware-get reply read from the real DeathAdder V3 Pro (1532:00c3, 2026-10-14), as the
+    // 90 data bytes of the 91-byte hidraw read: status 02 (ok), transaction 1f echoed, data size
+    // 2, class 00, command 81, arguments 02 00 (what they mean is not established). The checksum
+    // 81 covers the arguments: without them it would be 83.
+    const uint8_t real[RAZER90_LEN] = { 0x02, 0x1f, 0x00, 0x00, 0x00, 0x02, 0x00, 0x81, 0x02, 0x00,
+                                        [88] = 0x81 };
+    struct razer90_reply real_reply;
+    check(razer90_decode(real, 0x00, 0x81, &real_reply) == 0, "decode real reply");
+    check(real_reply.status == RAZER_STATUS_OK && real_reply.transaction == 0x1f
+              && real_reply.len == 2 && real_reply.args[0] == 0x02 && real_reply.args[1] == 0x00,
+          "real reply fields");
+    uint8_t tampered[RAZER90_LEN];
+    memcpy(tampered, real, sizeof tampered);
+    tampered[8] = 0x03;
+    check(razer90_decode(tampered, 0x00, 0x81, &real_reply) == RAZER_ERR_CRC, "real argument is under the checksum");
 
     // Request for firmware get: size 2, no arguments. Checksum 02 ^ 81 = 83, stored at byte 88.
     check(razer90_encode(frame, 0x1f, 0x00, 0x81, nullptr, 2) == 0, "encode firmware get");

@@ -25,15 +25,13 @@
 //   byte  88     checksum = XOR of bytes 2..87
 //   byte  89     reserved (0)
 //
-// The checksum leaves out the status and the transaction id, unlike the Seiren's. UNPROVEN for
-// replies: the public driver only describes the checksum (as stored at the second-last byte) and
-// never checks one on a reply, so razer90_decode() assumes a reply carries the same checksum in
-// the same place. The Seiren's reply checksum sat elsewhere than its request's, and that was only
-// learned from a real reply; do not trust this one until a real reply from the mouse decodes.
+// The checksum leaves out the status and the transaction id, unlike the Seiren's. SEEN on the
+// real mouse (2026-10-14, firmware get): the reply carried the same checksum rule in the same
+// place, with the arguments under it (0x81; without them it would be 0x83).
 //
 // hidraw wants a leading report-ID byte (0x00 for an unnumbered report) in front of these 90
-// bytes: 91 bytes for HIDIOCSFEATURE, and HIDIOCGFEATURE is expected to put the 90 bytes of data
-// at buf[1..90] (the kernel's behaviour for unnumbered reports; not yet seen on this device). The
+// bytes: 91 bytes for HIDIOCSFEATURE, and HIDIOCGFEATURE puts the 90 bytes of data at buf[1..90]
+// (seen on the real mouse: a 91-byte read with the report-ID byte 0x00 first). The
 // codec below only ever sees the 90 bytes; the transport owns the prefix, and razer90_hidraw()
 // builds it so that off-by-one is tested here.
 
