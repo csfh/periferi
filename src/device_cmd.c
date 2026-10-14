@@ -14,6 +14,7 @@
 #include "module.h"
 #include "razer_dev.h"
 #include "scan.h"
+#include "store.h"
 
 static void err(char *reply, size_t size, const char *what, const char *id)
 {
@@ -90,14 +91,19 @@ void status_handle(const char *args, char *reply, size_t size)
     }
     // The firmware bytes are shown raw: what they mean is not established. Brightness is the
     // value the device keeps (storage 1), not necessarily the one it is showing right now. Mute
-    // and dial are what the mic last reported to the daemon, "unknown" until it does.
+    // and dial are what the mic last reported to the daemon, "unknown" until it does. effect and
+    // color are what peri last SENT it (the mic cannot be asked): "unknown" and "none" if nothing
+    // was recorded, which is not the same as the effect "none" (Off).
     struct razer_state controls = controls_state(m.id);
+    struct peri_look look = peri_look_load(m.id);
     char dial[8] = "unknown";
     if (controls.dial >= 0)
         snprintf(dial, sizeof dial, "%d", controls.dial);
-    snprintf(reply, size, "ok module=%s firmware=%02x%02x brightness=%u mute=%s dial=%s\n", m.id,
-             firmware[0], firmware[1], brightness,
-             controls.mute < 0 ? "unknown" : controls.mute ? "unmuted" : "muted", dial);
+    snprintf(reply, size,
+             "ok module=%s firmware=%02x%02x brightness=%u mute=%s dial=%s effect=%s color=%s\n",
+             m.id, firmware[0], firmware[1], brightness,
+             controls.mute < 0 ? "unknown" : controls.mute ? "unmuted" : "muted", dial,
+             look.effect[0] ? look.effect : "unknown", look.color[0] ? look.color : "none");
 }
 
 // "0000ff" -> {0x00, 0x00, 0xff}. Exactly six hex digits.
@@ -132,7 +138,7 @@ void set_handle(const char *args, char *reply, size_t size)
     }
 
     long brightness = -1, effect = -1;
-    const char *effect_name = "";
+    const char *effect_name = "", *color_text = nullptr;
     uint8_t rgb[3];
     bool has_color = false;
     for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
@@ -157,6 +163,7 @@ void set_handle(const char *args, char *reply, size_t size)
                 return;
             }
             has_color = true;
+            color_text = t + 6;
         } else {
             snprintf(reply, size, "%s", usage);
             return;
@@ -185,8 +192,12 @@ void set_handle(const char *args, char *reply, size_t size)
             err(reply, size, "the device did not accept the effect", id);
             return;
         }
-        snprintf(reply, size, "ok module=%s sent=%s color=%s storage=none readback=unavailable\n",
-                 m.id, effect_name, has_color ? "yes" : "no");
+        // Record what the mic accepted, only now: a refused set leaves the old record alone. A
+        // colour sent with an effect that has none (breathing, spectrum, off) is not kept.
+        bool recorded = peri_look_save(m.id, effect_name, has_color ? color_text : nullptr);
+        snprintf(reply, size,
+                 "ok module=%s sent=%s color=%s storage=none readback=unavailable record=%s\n",
+                 m.id, effect_name, has_color ? "yes" : "no", recorded ? "saved" : "failed");
         return;
     }
 
