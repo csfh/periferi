@@ -8,6 +8,12 @@
 // args: "<module-id>". Read-only.
 void status_handle(const char *args, char *reply, size_t size);
 
+// args: "<module-id> get" or "<module-id> set gain=<0-100> monitor=<0-100> monitor_on=<yes|no>
+// headphones=<0-100>" (any of the keys). The microphone's standard USB audio controls, through
+// the sound card (see audio.h): the capture gain, the monitor mix into the headphones, and the
+// headphone volume. Live mixer state, nothing is stored in the microphone by peri.
+void audio_handle(const char *args, char *reply, size_t size);
+
 // args: "<module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>]
 // [brightness=<0-255>]". A module keeps two saved looks. get and save only read and write the
 // saved file, so they never touch the device and work while it is unplugged; save replaces the

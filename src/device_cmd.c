@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "audio.h"
 #include "controls.h"
 #include "module.h"
 #include "razer_dev.h"
@@ -369,4 +370,108 @@ void look_handle(const char *args, char *reply, size_t size)
         snprintf(shown, sizeof shown, "%u", now);
     snprintf(reply, size, "ok module=%s applied=%s effect=%s brightness=%s\n", id,
              peri_look_which_name(which), l.effect[0] ? l.effect : "-", shown);
+}
+
+static void reply_audio(char *reply, size_t size, const char *id, int card)
+{
+    static const struct { const char *key; enum peri_audio_ctl ctl; bool yes_no; } keys[] = {
+        { "gain", PERI_AUDIO_GAIN, false }, { "monitor", PERI_AUDIO_MONITOR, false },
+        { "monitor_on", PERI_AUDIO_MONITOR_ON, true }, { "headphones", PERI_AUDIO_HEADPHONES, false },
+    };
+    int n = snprintf(reply, size, "ok module=%s", id);
+    for (size_t i = 0; i < sizeof keys / sizeof *keys && n > 0 && (size_t)n < size; i++) {
+        int v;
+        char shown[8] = "unknown";
+        if (peri_audio_get(card, keys[i].ctl, &v)) {
+            if (keys[i].yes_no)
+                snprintf(shown, sizeof shown, "%s", v ? "yes" : "no");
+            else
+                snprintf(shown, sizeof shown, "%d", v);
+        }
+        n += snprintf(reply + n, size - (size_t)n, " %s=%s", keys[i].key, shown);
+    }
+    if (n > 0 && (size_t)n + 2 <= size)
+        memcpy(reply + n, "\n", 2);
+}
+
+void audio_handle(const char *args, char *reply, size_t size)
+{
+    static const char usage[] = "err usage: audio <module-id> get | set gain=<0-100> monitor=<0-100> "
+                                "monitor_on=<yes|no> headphones=<0-100>\n";
+    char line[160], *rest;
+    snprintf(line, sizeof line, "%s", args);
+    const char *id = strtok_r(line, " \n", &rest);
+    const char *verb = strtok_r(nullptr, " \n", &rest);
+    if (!id || !verb || (strcmp(verb, "get") != 0 && strcmp(verb, "set") != 0)) {
+        snprintf(reply, size, "%s", usage);
+        return;
+    }
+    bool set = strcmp(verb, "set") == 0;
+
+    // Parse every setting before touching the sound card, so a bad one changes nothing.
+    struct { enum peri_audio_ctl ctl; int value; } changes[4];
+    size_t count = 0;
+    for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
+        if (!set || count == 4) {
+            snprintf(reply, size, "%s", usage);
+            return;
+        }
+        const char *eq = strchr(t, '=');
+        size_t klen = eq ? (size_t)(eq - t) : 0;
+        if (!eq) {
+            snprintf(reply, size, "%s", usage);
+            return;
+        }
+        enum peri_audio_ctl ctl;
+        bool level = true;
+        if (klen == 4 && strncmp(t, "gain", 4) == 0) ctl = PERI_AUDIO_GAIN;
+        else if (klen == 7 && strncmp(t, "monitor", 7) == 0) ctl = PERI_AUDIO_MONITOR;
+        else if (klen == 10 && strncmp(t, "monitor_on", 10) == 0) { ctl = PERI_AUDIO_MONITOR_ON; level = false; }
+        else if (klen == 10 && strncmp(t, "headphones", 10) == 0) ctl = PERI_AUDIO_HEADPHONES;
+        else {
+            snprintf(reply, size, "%s", usage);
+            return;
+        }
+        for (size_t i = 0; i < count; i++)
+            if (changes[i].ctl == ctl) { // a key given twice is a typo, not a request
+                snprintf(reply, size, "%s", usage);
+                return;
+            }
+        int value;
+        if (level) {
+            char *end;
+            unsigned long v = strtoul(eq + 1, &end, 10);
+            if (eq[1] == '\0' || *end != '\0' || v > 100) {
+                err(reply, size, "levels are whole numbers from 0 to 100", id);
+                return;
+            }
+            value = (int)v;
+        } else if (strcmp(eq + 1, "yes") == 0 || strcmp(eq + 1, "no") == 0) {
+            value = strcmp(eq + 1, "yes") == 0;
+        } else {
+            err(reply, size, "monitor_on must be yes or no", id);
+            return;
+        }
+        changes[count].ctl = ctl;
+        changes[count++].value = value;
+    }
+    if (set && count == 0) {
+        snprintf(reply, size, "%s", usage);
+        return;
+    }
+
+    struct peri_module m;
+    if (!installed_razer_module(id, &m, reply, size))
+        return;
+    int card = peri_audio_card(m.vid, m.pid);
+    if (card < 0) {
+        err(reply, size, "the sound card is not connected", id);
+        return;
+    }
+    for (size_t i = 0; i < count; i++)
+        if (!peri_audio_set(card, changes[i].ctl, changes[i].value)) {
+            err(reply, size, "the sound card did not accept the change", id);
+            return;
+        }
+    reply_audio(reply, size, id, card);
 }
