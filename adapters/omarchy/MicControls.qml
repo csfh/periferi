@@ -125,6 +125,25 @@ Column {
         }
       }
 
+      Label { visible: Mic.showSpeed(root.peri.look); text: "Speed" }
+      Row {
+        id: speedRow
+        visible: Mic.showSpeed(root.peri.look)
+        width: parent.width
+        spacing: Style.space(6)
+        Repeater {
+          model: Mic.speeds
+          delegate: Button {
+            required property var modelData
+            bordered: true
+            width: Style.space(120)
+            selected: Mic.speedSelected(modelData.id, root.peri.look)
+            text: modelData.label
+            onClicked: root.peri.chooseSpeed(modelData.id)
+          }
+        }
+      }
+
       Label {
         visible: Mic.showColors(root.peri.look)
         text: Mic.maxColors(root.peri.look.effect) === 2 ? "First colour" : "Colour"

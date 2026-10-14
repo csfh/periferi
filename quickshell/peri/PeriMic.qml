@@ -68,6 +68,12 @@ Scope {
     if (next !== null) saveLook(root.editing, next)
   }
 
+  // Slow or Fast for a wave. File only.
+  function chooseSpeed(speed) {
+    var next = M.withSpeed(root.look, speed)
+    if (next !== null) saveLook(root.editing, next)
+  }
+
   // "Random colours" for breathing. File only.
   function chooseRandomColors() {
     var next = M.withRandomColors(root.look)

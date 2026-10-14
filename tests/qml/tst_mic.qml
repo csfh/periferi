@@ -7,12 +7,13 @@ TestCase {
 
   // What `peri status` and `peri look ... get` print (shapes copied from the real daemon).
   readonly property string status: "module   razer-seiren-v3-chroma\nfirmware 0101\nbrightness 102\nmute     muted\ndial     43\n"
-  function lookText(effect, color, brightness, color2) {
+  function lookText(effect, color, brightness, color2, speed) {
     return "module   razer-seiren-v3-chroma\nlook     unmuted\neffect   " + effect
-      + "\ncolor    " + color + "\ncolor2   " + (color2 || "none") + "\nbrightness " + brightness + "\n"
+      + "\ncolor    " + color + "\ncolor2   " + (color2 || "none") + "\nspeed    " + (speed || "default")
+      + "\nbrightness " + brightness + "\n"
   }
-  function look(effect, color, brightness, color2) {
-    return { effect: effect, color: color, color2: color2 || "", brightness: brightness }
+  function look(effect, color, brightness, color2, speed) {
+    return { effect: effect, color: color, color2: color2 || "", speed: speed || "", brightness: brightness }
   }
 
   // --- reading `peri status`: online, and the mic's own brightness ---------------------------
@@ -125,6 +126,51 @@ TestCase {
     verify(Mic.showColors(look("breathing", "", -1)))
     verify(Mic.showColors(look("", "", -1)))     // nothing chosen yet: a swatch starts the Colour effect
     verify(Mic.showColors(null))
+  }
+
+  // --- wave speed -----------------------------------------------------------------------------
+  function test_parse_look_speed() {
+    compare(Mic.parseLook(lookText("wave", "none", "unset", "none", "fast")), look("wave", "", -1, "", "fast"))
+    compare(Mic.parseLook(lookText("wave-reverse", "none", "40", "none", "slow")), look("wave-reverse", "", 40, "", "slow"))
+    compare(Mic.parseLook(lookText("wave", "none", "unset")), look("wave", "", -1))             // "default": not saved
+    compare(Mic.parseLook(lookText("spectrum", "none", "unset", "none", "fast")), look("spectrum", "", -1)) // no speed there
+    compare(Mic.parseLook(lookText("wave", "none", "unset", "none", "warp")), look("wave", "", -1))        // not a speed
+  }
+
+  function test_with_speed() {
+    compare(Mic.withSpeed(look("wave", "", 40), "fast"), look("wave", "", 40, "", "fast"))
+    compare(Mic.withSpeed(look("wave-reverse", "", -1, "", "fast"), "slow"), look("wave-reverse", "", -1, "", "slow"))
+    compare(Mic.withSpeed(look("spectrum", "", -1), "fast"), null)       // no speed for this effect
+    compare(Mic.withSpeed(look("", "", -1), "fast"), null)
+    compare(Mic.withSpeed(look("wave", "", -1), "warp"), null)
+    compare(Mic.withSpeed(look("wave", "", -1), ""), null)
+  }
+
+  // The speed stays across the two waves and is dropped for any other effect.
+  function test_speed_follows_the_effect() {
+    var fast = look("wave", "", 40, "", "fast")
+    compare(Mic.withEffect(fast, "wave-reverse"), look("wave-reverse", "", 40, "", "fast"))
+    compare(Mic.withEffect(fast, "spectrum"), look("spectrum", "", 40))
+    compare(Mic.withEffect(look("spectrum", "", 40), "wave"), look("wave", "", 40))
+    compare(Mic.withBrightness(fast, 100), look("wave", "", 255, "", "fast"))
+    compare(Mic.withColor(fast, 1, "ff0000"), look("static", "ff0000", 40))   // a colour switches to Colour: no speed
+  }
+
+  function test_speed_in_the_save_arguments_and_texts() {
+    compare(Mic.saveArgs("unmuted", look("wave", "", 40, "", "fast")),
+            ["save", "unmuted", "effect=wave", "speed=fast", "brightness=40"])
+    compare(Mic.saveArgs("unmuted", look("wave", "", -1)), ["save", "unmuted", "effect=wave"])
+    compare(Mic.saveArgs("unmuted", look("spectrum", "", -1, "", "fast")), ["save", "unmuted", "effect=spectrum"]) // stray speed left out
+    verify(Mic.showSpeed(look("wave", "", -1)) && Mic.showSpeed(look("wave-reverse", "", -1)))
+    verify(!Mic.showSpeed(look("spectrum", "", -1)) && !Mic.showSpeed(look("", "", -1)) && !Mic.showSpeed(null))
+    verify(Mic.speedSelected("fast", look("wave", "", -1, "", "fast")))
+    verify(!Mic.speedSelected("slow", look("wave", "", -1, "", "fast")))
+    verify(Mic.speedSelected("slow", look("wave", "", -1)))              // nothing saved: the slow one
+    verify(!Mic.speedSelected("fast", look("wave", "", -1)))
+    verify(!Mic.speedSelected("slow", look("spectrum", "", -1)))
+    compare(Mic.lookText(look("wave", "", -1, "", "fast")), "Saved: wave, fast")
+    compare(Mic.lookText(look("wave-reverse", "", 51)), "Saved: wave, other way, brightness 20%")
+    compare(Mic.speeds.map(function(x) { return x.id }), ["slow", "fast"])
   }
 
   function test_with_brightness() {

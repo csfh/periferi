@@ -20,15 +20,15 @@ var looks = [
   { id: "muted", label: "Muted look" }
 ]
 
-// The effect buttons. `colors` is how many colours the effect takes (0, 1 or 2): "static" needs
+// The effect buttons. `speed` marks the effects that can be slow or fast. `colors` is how many colours the effect takes (0, 1 or 2): "static" needs
 // its one, "breathing" may have none (random colours), one or two. The highlighted
 // button is the one saved in the look being edited.
 var effects = [
   { id: "static", label: "Colour", colors: 1 },
   { id: "breathing", label: "Breathing", colors: 2 },
   { id: "spectrum", label: "Spectrum", colors: 0 },
-  { id: "wave", label: "Wave", colors: 0 },
-  { id: "wave-reverse", label: "Wave, other way", colors: 0 },
+  { id: "wave", label: "Wave", colors: 0, speed: true },
+  { id: "wave-reverse", label: "Wave, other way", colors: 0, speed: true },
   { id: "none", label: "Off", colors: 0 }
 ]
 
@@ -53,7 +53,15 @@ function maxColors(id) {
   return e ? e.colors : 0
 }
 
-function emptyLook() { return { effect: "", color: "", color2: "", brightness: -1 } }
+function emptyLook() { return { effect: "", color: "", color2: "", speed: "", brightness: -1 } }
+
+// The speeds a wave can have. The daemon calls an unsaved one "default", which is the slow one.
+var speeds = [
+  { id: "slow", label: "Slow" },
+  { id: "fast", label: "Fast" }
+]
+
+function hasSpeed(id) { var e = effectInfo(id); return !!e && e.speed === true }
 
 // `peri status` prints "key   value" lines. Anything that is not a full answer, such as an empty
 // reply or a refusal, means the mic is offline. Only what the pane uses is read: brightness is the
@@ -79,6 +87,7 @@ function parseLook(text) {
   if (n >= 1 && validHex(v.color)) look.color = v.color.toLowerCase()
   if (look.effect === "static" && look.color === "") look.effect = ""   // static needs its colour
   if (n === 2 && look.color !== "" && validHex(v.color2)) look.color2 = v.color2.toLowerCase()
+  if (hasSpeed(look.effect) && (v.speed === "slow" || v.speed === "fast")) look.speed = v.speed
   if (/^\d+$/.test(v.brightness || "") && Number(v.brightness) <= maxBrightness)
     look.brightness = Number(v.brightness)
   return look
@@ -87,7 +96,8 @@ function parseLook(text) {
 function brightnessPercent(value) { return L.valToPercent(value, maxBrightness) }
 
 function copyLook(look, changes) {
-  var out = { effect: look.effect, color: look.color, color2: look.color2, brightness: look.brightness }
+  var out = { effect: look.effect, color: look.color, color2: look.color2,
+              speed: look.speed || "", brightness: look.brightness }
   for (var k in changes) out[k] = changes[k]
   return out
 }
@@ -101,7 +111,13 @@ function withEffect(look, id) {
   var color = n >= 1 ? look.color : ""
   var color2 = n === 2 && color !== "" ? look.color2 : ""
   if (id === "static" && color === "") color = "ffffff"
-  return copyLook(look, { effect: id, color: color, color2: color2 })
+  return copyLook(look, { effect: id, color: color, color2: color2, speed: hasSpeed(id) ? look.speed : "" })
+}
+
+// Pressing Slow or Fast: only for an effect that has a speed. null for any other, or a bad speed.
+function withSpeed(look, speed) {
+  if (!hasSpeed(look.effect) || (speed !== "slow" && speed !== "fast")) return null
+  return copyLook(look, { speed: speed })
 }
 
 // Pressing a swatch in the first row: colours the current effect if it takes a colour, else
@@ -117,7 +133,7 @@ function withColor(look, slot, hex) {
   if (slot !== 1) return null
   if (maxColors(look.effect) >= 1)
     return copyLook(look, { color: hex, color2: maxColors(look.effect) === 2 ? look.color2 : "" })
-  return copyLook(look, { effect: "static", color: hex, color2: "" })
+  return copyLook(look, { effect: "static", color: hex, color2: "", speed: "" })
 }
 
 // "Random colours": breathing with no colour chosen. null for any other effect.
@@ -142,6 +158,7 @@ function saveArgs(which, look) {
   if (look.effect !== "") args.push("effect=" + look.effect)
   if (n >= 1 && look.color !== "") args.push("color=" + look.color)
   if (n === 2 && look.color !== "" && look.color2 !== "") args.push("color2=" + look.color2)
+  if (hasSpeed(look.effect) && look.speed !== "") args.push("speed=" + look.speed)
   if (look.brightness >= 0) args.push("brightness=" + look.brightness)
   return args
 }
@@ -155,6 +172,14 @@ function canApply(look) { return !!look && (look.effect !== "" || look.brightnes
 // off), where they would only suggest a choice that does nothing. With no effect chosen yet
 // they stay, because picking a colour is a way to start: it selects the Colour effect.
 function showColors(look) { return !look || look.effect === "" || maxColors(look.effect) >= 1 }
+
+// Do the Slow and Fast buttons belong here? Only for an effect that has a speed.
+function showSpeed(look) { return !!look && hasSpeed(look.effect) }
+
+// Is this speed the saved one? An unsaved speed is the slow one, so Slow shows as chosen.
+function speedSelected(id, look) {
+  return !!look && hasSpeed(look.effect) && (look.speed === "" ? id === "slow" : look.speed === id)
+}
 
 // Is the second row of swatches useful? Only for an effect that takes two colours and has a first.
 function showSecondColor(look) { return !!look && maxColors(look.effect) === 2 && look.color !== "" }
@@ -187,6 +212,7 @@ function lookText(look) {
     else if (look.color !== "") name += ", " + (look.color2 !== "" ? "colours " + look.color + " and " + look.color2
                                                                    : "colour " + look.color)
     else if (maxColors(look.effect) === 2) name += ", random colours"
+    if (hasSpeed(look.effect) && look.speed === "fast") name += ", fast"
     parts.push(name)
   }
   if (look.brightness >= 0) parts.push("brightness " + brightnessPercent(look.brightness) + "%")
