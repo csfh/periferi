@@ -64,6 +64,9 @@ add_test(NAME audio COMMAND audio_test)
 add_executable(razer_scan_test tests/razer_scan_test.c src/razer_scan.c src/razer.c)
 add_test(NAME razer_scan COMMAND razer_scan_test)
 
+add_executable(follow_test tests/follow_test.c src/follow.c)
+add_test(NAME follow COMMAND follow_test)
+
 add_executable(json_test tests/json_test.c src/json.c)
 add_test(NAME json COMMAND json_test)
 
