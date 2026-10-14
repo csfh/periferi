@@ -3,7 +3,7 @@
 #include "module.h"
 
 // Where `peri setup` installs the rule. 60-: must sort before 70-uaccess.rules.
-constexpr char peri_udev_rules_path[] = "/etc/udev/rules.d/60-peri.rules";
+static const char peri_udev_rules_path[] = "/etc/udev/rules.d/60-peri.rules";
 
 // The rule file for these modules: one line per distinct vid:pid, sorted, and nothing but
 // those numbers in lowercase hex. Root installs this file but the modules are user-writable

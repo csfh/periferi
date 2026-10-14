@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static constexpr size_t max_rules_file = 64 * 1024;
+static const size_t max_rules_file = 64 * 1024;
 
 static int line_for(uint16_t vid, uint16_t pid, char *out, size_t size)
 {

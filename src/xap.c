@@ -104,8 +104,8 @@ int xap_call(int fd, const uint8_t *route, size_t route_len,
     return -1;
 }
 
-static constexpr uint8_t route_rgb_get[] = { 0x06, 0x04, 0x03 };
-static constexpr uint8_t route_rgb_set[] = { 0x06, 0x04, 0x04 };
+static const uint8_t route_rgb_get[] = { 0x06, 0x04, 0x03 };
+static const uint8_t route_rgb_set[] = { 0x06, 0x04, 0x04 };
 
 int xap_rgb_get(int fd, struct xap_rgb *cfg)
 {
@@ -129,7 +129,7 @@ int xap_rgb_get(int fd, struct xap_rgb *cfg)
     return 0;
 }
 
-static constexpr uint8_t route_rgb_effects[] = { 0x06, 0x04, 0x02 };
+static const uint8_t route_rgb_effects[] = { 0x06, 0x04, 0x02 };
 
 int xap_rgb_effects(int fd, uint64_t *mask)
 {
@@ -147,7 +147,7 @@ int xap_rgb_effects(int fd, uint64_t *mask)
     return 0;
 }
 
-static constexpr uint8_t route_rgb_save[] = { 0x06, 0x04, 0x05 };
+static const uint8_t route_rgb_save[] = { 0x06, 0x04, 0x05 };
 
 int xap_rgb_save(int fd)
 {

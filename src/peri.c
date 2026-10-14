@@ -781,8 +781,8 @@ static int cmd_blob(const char *arg)
     if (fd < 0)
         return 1;
 
-    static constexpr uint8_t length_route[] = { 0x01, 0x05 };
-    static constexpr uint8_t chunk_route[] = { 0x01, 0x06 };
+    static const uint8_t length_route[] = { 0x01, 0x05 };
+    static const uint8_t chunk_route[] = { 0x01, 0x06 };
     struct xap_reply reply;
     if (xap_call(fd, length_route, sizeof length_route, nullptr, 0, &reply) < 0
         || !(reply.flags & 0x01) || reply.len != 2) {

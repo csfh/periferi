@@ -15,7 +15,7 @@
 #include "scan.h"
 #include "tomlc17.h"
 
-static constexpr size_t max_module_file = 64 * 1024;
+static const size_t max_module_file = 64 * 1024;
 
 bool peri_module_id_valid(const char *id)
 {
