@@ -153,7 +153,7 @@ Column {
         }
       }
 
-      // Breathing and starlight take a second colour, once they have a first.
+      // Breathing takes a second colour, once it has a first.
       Label { visible: Mic.showSecondColor(root.peri.look); text: "Second colour" }
       Flow {
         visible: Mic.showSecondColor(root.peri.look)

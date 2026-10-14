@@ -61,7 +61,6 @@ enum razer_effect {
     RAZER_EFFECT_BREATHING = 0x02, // pulses; random colours, or one or two chosen colours
     RAZER_EFFECT_SPECTRUM = 0x03,  // cycles through all colours without pulsing
     RAZER_EFFECT_WAVE = 0x04,      // a wave that runs round the ring, in one of two directions
-    RAZER_EFFECT_STARLIGHT = 0x07, // twinkling points; random colours, or one or two chosen colours
     RAZER_EFFECT_WHEEL = 0x0a,     // a spinning wheel, in one of two directions
 };
 #define RAZER_EFFECT_ARGS_MAX 12
@@ -71,11 +70,10 @@ struct razer_effect_opts {
     uint8_t colors;
     uint8_t rgb[2][3];
     uint8_t reverse;  // wave and wheel: 0 or 1, which way round (which is which is not established)
-    uint8_t speed;    // starlight only, 1-3; 0 means the middle one
 };
 
 // The effect for a name: "none", "static", "breathing", "spectrum", "wave", "wave-reverse",
-// "starlight", "wheel", "wheel-reverse". Returns the effect id (or -1) and, if `reverse` is not
+// "wheel", "wheel-reverse". Returns the effect id (or -1) and, if `reverse` is not
 // null, whether the name is a reversed one.
 int razer_effect_lookup(const char *name, bool *reverse);
 int razer_effect_id(const char *name);
@@ -87,7 +85,7 @@ size_t razer_effect_build(uint8_t storage, uint8_t effect, const struct razer_ef
                           uint8_t args[RAZER_EFFECT_ARGS_MAX]);
 
 // The same for the effects with at most one colour: `rgb` (3 bytes) is required for static and
-// optional for breathing and starlight; the other effects ignore it.
+// optional for breathing; the other effects ignore it.
 size_t razer_effect_args(uint8_t storage, uint8_t effect, const uint8_t rgb[3],
                          uint8_t args[RAZER_EFFECT_ARGS_MAX]);
 

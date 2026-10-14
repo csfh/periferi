@@ -68,14 +68,13 @@ static bool clean(const struct peri_look *in, struct peri_look *out)
         if (effect < 0 || strlen(in->effect) >= sizeof out->effect)
             return false;
         snprintf(out->effect, sizeof out->effect, "%s", in->effect);
-        bool takes_colors = effect == RAZER_EFFECT_STATIC || effect == RAZER_EFFECT_BREATHING
-                            || effect == RAZER_EFFECT_STARLIGHT;
+        bool takes_colors = effect == RAZER_EFFECT_STATIC || effect == RAZER_EFFECT_BREATHING;
         if (effect == RAZER_EFFECT_STATIC && !lower_hex(in->color, out->color))
             return false;
-        // Breathing and starlight may have a colour; a bad one spoils the look, a missing one means random.
+        // Breathing may have a colour; a bad one spoils the look, a missing one means random.
         if (takes_colors && effect != RAZER_EFFECT_STATIC && in->color[0] && !lower_hex(in->color, out->color))
             return false;
-        // A second colour needs a first, and only breathing and starlight take two.
+        // A second colour needs a first, and only breathing takes two.
         if (out->color[0] && effect != RAZER_EFFECT_STATIC && in->color2[0]
             && !lower_hex(in->color2, out->color2))
             return false;

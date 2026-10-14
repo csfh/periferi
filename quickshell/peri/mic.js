@@ -21,7 +21,7 @@ var looks = [
 ]
 
 // The effect buttons. `colors` is how many colours the effect takes (0, 1 or 2): "static" needs
-// its one, "breathing" and "starlight" may have none (random colours), one or two. The highlighted
+// its one, "breathing" may have none (random colours), one or two. The highlighted
 // button is the one saved in the look being edited.
 var effects = [
   { id: "static", label: "Colour", colors: 1 },
@@ -31,7 +31,6 @@ var effects = [
   { id: "wave-reverse", label: "Wave, other way", colors: 0 },
   { id: "wheel", label: "Wheel", colors: 0 },
   { id: "wheel-reverse", label: "Wheel, other way", colors: 0 },
-  { id: "starlight", label: "Starlight", colors: 2 },
   { id: "none", label: "Off", colors: 0 }
 ]
 
@@ -123,7 +122,7 @@ function withColor(look, slot, hex) {
   return copyLook(look, { effect: "static", color: hex, color2: "" })
 }
 
-// "Random colours": breathing or starlight with no colour chosen. null for any other effect.
+// "Random colours": breathing with no colour chosen. null for any other effect.
 function withRandomColors(look) {
   if (maxColors(look.effect) !== 2) return null
   return copyLook(look, { color: "", color2: "" })
@@ -162,7 +161,7 @@ function showColors(look) { return !look || look.effect === "" || maxColors(look
 // Is the second row of swatches useful? Only for an effect that takes two colours and has a first.
 function showSecondColor(look) { return !!look && maxColors(look.effect) === 2 && look.color !== "" }
 
-// Does the "Random colours" button apply? Breathing and starlight, with or without colours.
+// Does the "Random colours" button apply? Breathing, with or without colours.
 function showRandomColors(look) { return !!look && maxColors(look.effect) === 2 }
 
 function effectSelected(id, look) {

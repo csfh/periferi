@@ -120,23 +120,6 @@ int main(void)
     o.reverse = 0;
     check(razer_effect_build(1, RAZER_EFFECT_WHEEL, &o, a) == 6 && memcmp(a, want_wheel, 6) == 0, "wheel");
 
-    const uint8_t want_star_random[6] = { 1, 0, 7, 0, 3, 0 };
-    const uint8_t want_star_one[9] = { 1, 0, 7, 0, 3, 1, 0xff, 0, 0 };
-    const uint8_t want_star_two[12] = { 1, 0, 7, 0, 3, 2, 0xff, 0, 0, 0, 0xff, 0 };
-    struct razer_effect_opts star = { .speed = 3 };
-    check(razer_effect_build(1, RAZER_EFFECT_STARLIGHT, &star, a) == 6
-              && memcmp(a, want_star_random, 6) == 0, "starlight random");
-    star.colors = 1;
-    memcpy(star.rgb[0], red, 3);
-    check(razer_effect_build(1, RAZER_EFFECT_STARLIGHT, &star, a) == 9
-              && memcmp(a, want_star_one, 9) == 0, "starlight one colour");
-    star.colors = 2;
-    memcpy(star.rgb[1], green, 3);
-    check(razer_effect_build(1, RAZER_EFFECT_STARLIGHT, &star, a) == 12
-              && memcmp(a, want_star_two, 12) == 0, "starlight two colours");
-    star.speed = 0; // the middle speed
-    razer_effect_build(1, RAZER_EFFECT_STARLIGHT, &star, a);
-    check(a[4] == 2, "starlight default speed");
 
     const uint8_t want_breath_two[12] = { 1, 0, 2, 2, 0, 2, 0, 0xff, 0, 0xff, 0, 0 };
     struct razer_effect_opts two = { .colors = 2 };
@@ -159,7 +142,7 @@ int main(void)
     check(razer_effect_lookup("wave", &rev) == RAZER_EFFECT_WAVE && !rev, "name wave");
     check(razer_effect_lookup("wave-reverse", &rev) == RAZER_EFFECT_WAVE && rev, "name wave-reverse");
     check(razer_effect_lookup("wheel-reverse", &rev) == RAZER_EFFECT_WHEEL && rev, "name wheel-reverse");
-    check(razer_effect_id("starlight") == RAZER_EFFECT_STARLIGHT && razer_effect_id("fire") == -1
+    check(razer_effect_id("starlight") == -1 && razer_effect_id("fire") == -1
               && razer_effect_id(nullptr) == -1 && razer_effect_id("wave-") == -1, "names");
 
     // The device's words for a status.

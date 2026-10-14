@@ -10,8 +10,8 @@
 //
 //   [unmuted]
 //   effect = "static"
-//   color = "0000ff"     ("static" needs one; "breathing" and "starlight" may have one or two)
-//   color2 = "ff0000"    (a second colour, only with a first, only for "breathing"/"starlight")
+//   color = "0000ff"     ("static" needs one; "breathing" may have one or two)
+//   color2 = "ff0000"    (a second colour, only with a first, only for "breathing")
 //   brightness = 102     (0-255)
 //
 //   [muted]

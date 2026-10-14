@@ -122,18 +122,18 @@ int main(void)
     snprintf(tmp, sizeof tmp, "%s/peri/state/." ID ".toml.tmp", root);
     CHECK(access(outside, F_OK) != 0 && access(tmp, F_OK) != 0);
 
-    // Breathing and starlight take no colour, one, or two; a second needs a first.
+    // Breathing takes no colour, one, or two; a second needs a first.
     struct peri_look b2 = look("breathing", "00FF00", -1);
     snprintf(b2.color2, sizeof b2.color2, "%s", "FF0000");
     CHECK(peri_look_save(ID, UN, &b2));
     l = peri_look_load(ID, UN);
     CHECK(strcmp(l.effect, "breathing") == 0 && strcmp(l.color, "00ff00") == 0
           && strcmp(l.color2, "ff0000") == 0);
-    struct peri_look s1 = look("starlight", "", -1);
+    struct peri_look s1 = look("breathing", "", -1);
     snprintf(s1.color2, sizeof s1.color2, "%s", "ff0000");      // no first colour: the second is dropped
     CHECK(peri_look_save(ID, UN, &s1));
     l = peri_look_load(ID, UN);
-    CHECK(strcmp(l.effect, "starlight") == 0 && l.color[0] == '\0' && l.color2[0] == '\0');
+    CHECK(strcmp(l.effect, "breathing") == 0 && l.color[0] == '\0' && l.color2[0] == '\0');
     struct peri_look st2 = look("static", "0000ff", -1);
     snprintf(st2.color2, sizeof st2.color2, "%s", "ff0000");    // static takes one
     CHECK(peri_look_save(ID, UN, &st2));
@@ -152,13 +152,13 @@ int main(void)
     CHECK(strcmp(peri_look_load(ID, UN).effect, "spectrum") == 0); // the refused saves changed nothing
 
     // The new effect names are accepted, the reversed ones too, and nothing else.
-    const char *names[] = { "wave", "wave-reverse", "wheel", "wheel-reverse", "starlight" };
+    const char *names[] = { "wave", "wave-reverse", "wheel", "wheel-reverse" };
     for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
         struct peri_look n = look(names[i], "", -1);
         CHECK(peri_look_save(ID, MU, &n));
         CHECK(strcmp(peri_look_load(ID, MU).effect, names[i]) == 0);
     }
-    struct peri_look nope = look("fire", "", -1);
+    struct peri_look nope = look("starlight", "", -1);   // not an effect this mic shows
     CHECK(!peri_look_save(ID, MU, &nope));
 
     // The old single-look format (what an earlier version wrote) loads as two empty looks, and

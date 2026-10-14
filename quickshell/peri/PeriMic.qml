@@ -62,13 +62,13 @@ Scope {
   }
 
   // A swatch: slot 1 is the first colour (it switches to "Colour" if the effect takes none), slot 2
-  // the second colour of breathing or starlight. File only.
+  // the second colour of breathing. File only.
   function chooseColor(slot, hex) {
     var next = M.withColor(root.look, slot, hex)
     if (next !== null) saveLook(root.editing, next)
   }
 
-  // "Random colours" for breathing or starlight. File only.
+  // "Random colours" for breathing. File only.
   function chooseRandomColors() {
     var next = M.withRandomColors(root.look)
     if (next !== null) saveLook(root.editing, next)
