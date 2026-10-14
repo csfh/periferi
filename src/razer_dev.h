@@ -25,3 +25,7 @@ int razer_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t
 int razer_firmware(int fd, uint8_t version[2]);
 int razer_brightness(int fd, uint8_t storage, uint8_t *brightness);
 int razer_set_brightness(int fd, uint8_t storage, uint8_t brightness);
+
+// Set the lighting effect (class 0x0f, command 0x02), see razer_effect_args() for `rgb`. The
+// device keeps no read-back of the effect, so the caller must know what to restore.
+int razer_set_effect(int fd, uint8_t storage, uint8_t effect, const uint8_t rgb[3]);

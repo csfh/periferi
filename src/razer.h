@@ -53,6 +53,22 @@ struct razer_reply {
     uint8_t args[RAZER_REPLY_ARGS_MAX];
 };
 
+// The lighting effects of the extended matrix (class 0x0f, command 0x02). The numbers are the
+// effect ids the device takes.
+enum razer_effect {
+    RAZER_EFFECT_NONE = 0x00,
+    RAZER_EFFECT_STATIC = 0x01,
+    RAZER_EFFECT_BREATHING = 0x02, // pulses; random colours unless one colour is given
+    RAZER_EFFECT_SPECTRUM = 0x03,  // cycles through all colours without pulsing
+};
+#define RAZER_EFFECT_ARGS_MAX 9
+
+// The arguments of an effect set: variable storage, LED id 0, the effect, then its parameters.
+// `rgb` (3 bytes) is required for static and optional for breathing; the other effects ignore it.
+// Returns the data size (6 or 9), or 0 if the effect is unknown or lacks its colour.
+size_t razer_effect_args(uint8_t storage, uint8_t effect, const uint8_t rgb[3],
+                         uint8_t args[RAZER_EFFECT_ARGS_MAX]);
+
 // Build a request frame whose data size is `len`. A null `args` means `len` zero bytes: queries
 // such as firmware get declare a size but carry nothing. Returns 0, or RAZER_ERR_ARGS.
 int razer_encode(uint8_t frame[RAZER_REPORT_LEN], uint8_t transaction, uint8_t cls, uint8_t cmd,

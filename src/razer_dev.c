@@ -100,3 +100,13 @@ int razer_set_brightness(int fd, uint8_t storage, uint8_t brightness)
     struct razer_reply reply;
     return query(fd, 0x0f, 0x04, 3, args, 0, &reply);
 }
+
+int razer_set_effect(int fd, uint8_t storage, uint8_t effect, const uint8_t rgb[3])
+{
+    uint8_t args[RAZER_EFFECT_ARGS_MAX];
+    size_t size = razer_effect_args(storage, effect, rgb, args);
+    if (size == 0)
+        return RAZER_ERR_ARGS;
+    struct razer_reply reply;
+    return query(fd, 0x0f, 0x02, size, args, 0, &reply);
+}

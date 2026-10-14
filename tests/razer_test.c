@@ -81,6 +81,37 @@ int main(void)
     check(razer_encode(frame, 0x52, 0x0f, 0x04, back, 3) == 0 && frame[63] == 0x3c,
           "brightness set 102");
 
+    // Effect arguments, laid out as in the documented examples of the public reference
+    // (storage 01, LED 00). Colours are red, green.
+    uint8_t a[RAZER_EFFECT_ARGS_MAX];
+    const uint8_t red[3] = { 0xff, 0, 0 }, green[3] = { 0, 0xff, 0 };
+    const uint8_t want_static[9] = { 1, 0, 1, 0, 0, 1, 0xff, 0, 0 };
+    const uint8_t want_breath_one[9] = { 1, 0, 2, 1, 0, 1, 0, 0xff, 0 };
+    const uint8_t want_breath_random[6] = { 1, 0, 2, 0, 0, 0 };
+    const uint8_t want_spectrum[6] = { 1, 0, 3, 0, 0, 0 };
+    const uint8_t want_none[6] = { 1, 0, 0, 0, 0, 0 };
+    check(razer_effect_args(1, RAZER_EFFECT_STATIC, red, a) == 9 && memcmp(a, want_static, 9) == 0,
+          "effect static");
+    check(razer_effect_args(1, RAZER_EFFECT_BREATHING, green, a) == 9
+              && memcmp(a, want_breath_one, 9) == 0,
+          "effect breathing, one colour");
+    check(razer_effect_args(1, RAZER_EFFECT_BREATHING, nullptr, a) == 6
+              && memcmp(a, want_breath_random, 6) == 0,
+          "effect breathing, random");
+    check(razer_effect_args(1, RAZER_EFFECT_SPECTRUM, nullptr, a) == 6
+              && memcmp(a, want_spectrum, 6) == 0,
+          "effect spectrum");
+    check(razer_effect_args(1, RAZER_EFFECT_NONE, red, a) == 6 && memcmp(a, want_none, 6) == 0,
+          "effect none ignores its colour");
+    check(razer_effect_args(1, RAZER_EFFECT_STATIC, nullptr, a) == 0, "static needs a colour");
+    check(razer_effect_args(1, 0x7f, red, a) == 0, "unknown effect");
+
+    // Spectrum, storage 00, as a whole frame: 52 ^ 06 ^ 0f ^ 02 ^ 03 = 5a.
+    check(razer_effect_args(0, RAZER_EFFECT_SPECTRUM, nullptr, a) == 6
+              && razer_encode(frame, 0x52, 0x0f, 0x02, a, 6) == 0 && frame[6] == 6
+              && frame[11] == 3 && frame[63] == 0x5a,
+          "spectrum frame");
+
     uint8_t big[RAZER_REQUEST_ARGS_MAX + 1] = { 0 };
     check(razer_encode(frame, 0x52, 0, 0, big, RAZER_REQUEST_ARGS_MAX) == 0, "54 args fit");
     check(razer_encode(frame, 0x52, 0, 0, nullptr, RAZER_REQUEST_ARGS_MAX + 1) == RAZER_ERR_ARGS,

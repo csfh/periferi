@@ -48,3 +48,31 @@ int razer_decode(const uint8_t frame[RAZER_REPORT_LEN], uint8_t cls, uint8_t cmd
     memcpy(reply->args, frame + 9, reply->len);
     return 0;
 }
+
+size_t razer_effect_args(uint8_t storage, uint8_t effect, const uint8_t rgb[3],
+                         uint8_t args[RAZER_EFFECT_ARGS_MAX])
+{
+    memset(args, 0, RAZER_EFFECT_ARGS_MAX);
+    args[0] = storage;
+    args[2] = effect;
+
+    switch (effect) {
+    case RAZER_EFFECT_NONE:
+    case RAZER_EFFECT_SPECTRUM:
+        return 6;
+    case RAZER_EFFECT_BREATHING:
+        if (!rgb)
+            return 6; // random colours
+        args[3] = 0x01; // one colour
+        break;
+    case RAZER_EFFECT_STATIC:
+        if (!rgb)
+            return 0;
+        break;
+    default:
+        return 0;
+    }
+    args[5] = 0x01;
+    memcpy(args + 6, rgb, 3);
+    return 9;
+}
