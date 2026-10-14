@@ -5,8 +5,8 @@
 #include <stdint.h>
 
 // The compact Razer vendor frame as the Seiren V3 Chroma speaks it (the 90-byte frame of
-// Razer mice, e.g. the DeathAdder V3 Pro, is a different shape and is not covered here): one numbered 64-byte
-// HID report (report ID 7, vendor page 0xFF53). Pure byte shuffling, no I/O, so
+// Razer mice, e.g. the DeathAdder V3 Pro, is a different shape: see razer90.h): one numbered
+// 64-byte HID report (report ID 7, vendor page 0xFF53). Pure byte shuffling, no I/O, so
 // it can be tested without the microphone.
 //
 //   byte  0      report ID (7)

@@ -53,6 +53,9 @@ add_test(NAME rgb_settings COMMAND rgb_settings_test)
 add_executable(razer_test tests/razer_test.c src/razer.c)
 add_test(NAME razer COMMAND razer_test)
 
+add_executable(razer90_test tests/razer90_test.c src/razer90.c src/razer.c)
+add_test(NAME razer90 COMMAND razer90_test)
+
 add_executable(store_test tests/store_test.c src/store.c src/module.c src/fsutil.c src/razer.c)
 target_link_libraries(store_test PRIVATE tomlc17)
 add_test(NAME store COMMAND store_test)
