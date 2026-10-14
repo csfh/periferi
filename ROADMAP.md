@@ -39,6 +39,11 @@ Possible: all 44 built-in effects, any single color, speed, which groups are lit
 - `peri xap` and the daemon only send allowlisted routes. Bootloader jump (`01 07`)
   and EEPROM reset (`01 09`) exist in this firmware and stay refused **even when the
   keyboard is unlocked**. One secure unlock opens every secure route.
+- `peri blob <node>` is the one read-only exception to "allowlisted routes only": it sends the two read
+  routes `01 05` (blob length) and `01 06` (a 32-byte chunk at a u16 offset), only to an XAP control
+  interface, and never writes. Its output is binary (gzip JSON) and is inspected outside the code.
+- Brightness is never sent above the module's `limits.max_brightness` (the board's own limit); the daemon
+  refuses `val=` above it, clamps `color=` to it, and refuses both if the module gives no limit.
 - Automation (themes, idle, schedules) uses volatile `set` only and never `save`.
   `save` writes the keyboard's EEPROM and is always a manual action.
 - Unnumbered HID reports need a leading `0x00` byte on write.
@@ -112,17 +117,57 @@ Rules for this work:
   user to run `peri setup` in a terminal (no `pkexec` from a click). The udev rule is generated
   from installed modules' match fields.
 
+## Drop CTRL v2: what can be configured (stock firmware, XAP 0.3.0)
+
+Read from the board itself (2026-10-13): lighting capabilities `0x12` and rgbmatrix capabilities
+`0x3e`. Read as one bit per sub-route, that means only the RGB matrix exists (no backlight, RGB-light or
+audio) with all five routes present; this agrees with all three masks. The board's configuration blob
+(`peri blob <node>`, gzip JSON, 1615 bytes) says `rgb_matrix.max_brightness = 191`, a 119-LED layout, and
+a secure unlock sequence of matrix position `[0,0]` (the Esc key, 5 s timeout, 60 s idle timeout).
+The blob is gzip JSON; for now it is read with `peri blob <node> > file` and inspected outside the code.
+
+**On the board** (volatile unless saved):
+
+| Setting | Range | Notes |
+|---|---|---|
+| Lighting on/off | 0 / 1 | done |
+| Effect | 44 built-ins, ids `0x00`-`0x2B` | list read from the enabled-effects mask |
+| Color | hue and saturation, 0-255 | swatches send hue/sat only, never brightness |
+| Brightness | 0 to **191** | the cap is the board's own; the daemon refuses more |
+| Speed | 0-255 | no per-effect table of which effects ignore it |
+| LED groups | 4 flag bits: 1 modifiers (29 LEDs), 2 underglow (32), 4 keys (56), 8 indicators (2, shared with modifiers) | the layout agrees with the QMK convention. Watched on the board 2026-10-13: 4 = the key LEDs, 1 = the modifier keys, 8 = no visible change (its 2 LEDs are modifiers too), 2 = flag flips as expected, what went dark not described |
+| Save to keyboard | | writes EEPROM, explicit confirmation only, never from a slider or preset |
+
+**Read-only:** XAP and QMK versions, board ids, manufacturer, product, hardware id, keymap (8 layers, keycodes;
+layout from the blob).
+
+**Locked, never sent:** key remapping, bootloader, EEPROM reset (secure routes).
+
+**Impossible on stock firmware:** per-key or per-zone colors, host-driven animations, audio, plain backlight, macros.
+
+**Host-side** (peri manages, not the board): presets, re-apply after replug or resume, lights off on lock or
+idle, follow the theme accent, schedules. These wait on the Tier 2 foundations.
+
 ## Tier 1: widget and CLI polish
 
 Each is one small turn. Use the standalone adapter for fast iteration, since
 Omarchy's shell caches plugin code (changes to a loaded widget need `omarchy restart shell`).
 
-- [ ] Brightness slider; top of the slider maps to the board's real cap (read it back, do not hard-code)  **[ready]**
-- [ ] Effect picker; `peri rgb effects` lists names  **[ready]**
-- [ ] Color picker (hue and saturation) plus a few swatches  **[ready]**
-- [ ] Speed slider  **[ready]**
-- [ ] LED-group toggles (keys, underglow, modifiers, indicators). Bit meanings are QMK convention, so confirm each by watching the keyboard  **[ready]**
-- [ ] "Save to keyboard" button with confirmation  **[ready]**
+The panel is a larger two-pane window like Omarchy's own power and network panels (a `Panel` with a
+`KeyboardPanel`; `PanelContent.qml` holds the panes): devices on the left, the selected device's
+controls on the right with no folds. It replaced a small popup that crammed everything together.
+Built in the panel. Guided hardware test run 2026-10-13 (volatile only, no Save, restored from a snapshot afterwards): brightness 50% read 96/191 with colour and speed untouched; colour picker moved hue/sat and left brightness alone; speed slider value equalled the keyboard's readback (184); effect click changed only the effect; LED chips flipped exactly their own bit (0xfb, 0xfe, 0xfd, 0xf7) and the last group refused to switch off (0xf4):
+
+- [ ] Brightness slider: 0-100% of the board's own limit (191, from its module); the daemon refuses more, `color=` is clamped to it  **[built]**
+- [ ] Effect list: the firmware's own 44 effects (`peri rgb effects`)  **[built]**
+- [ ] Color: swatches, hue and saturation sliders; they never touch brightness  **[built]**
+- [ ] Speed slider  **[built]**
+- [ ] LED groups: four switches that flip one bit of what the board holds; the last lit group cannot be switched off. The board's LED layout agrees with the QMK bit meanings (1 modifiers, 2 underglow, 4 keys, 8 indicators); watched on the board: keys, modifier keys, indicators = no visible change; underglow not described  **[verified on hardware, 2026-10-13]**
+- [x] "Save to keyboard": removed from the panel on request (2026-10-13). `peri rgb save` and `PeriLighting.save()` remain; persistence is better done by the daemon re-applying a stored look on plug-in (Tier 2/3)
+- [ ] Writes are coalesced: while one `peri rgb set` runs, later ones merge (last value per key wins), so a dragged slider ends where it was released  **[built, tested]**
+- [ ] `peri modules` shows the catalog's version even when the installed copy is older, so a stale module (for example one without `limits.max_brightness`) looks current. Add an "update available" state and show it in the panel  **[ready]**
+- [ ] Read-only board info in the panel (XAP and QMK versions, product, hardware id), via the existing allowlisted queries  **[ready]**
+- [ ] Keymap viewer: layout from the board's blob (119 LEDs, `LAYOUT_tkl_ansi`), 8 layers, keycodes  **[needs: a gzip and JSON reader in C; zlib]**
 
 ## Tier 2: daemon foundations
 
