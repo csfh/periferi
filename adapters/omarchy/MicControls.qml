@@ -10,7 +10,9 @@ import "peri/mic.js" as Mic
 // Two rules are built into how this is wired:
 //   - The slider is connected to `onReleased` only, never `onMoved`, and nothing is bound to a
 //     write. A refresh that changes `value` cannot send anything.
-//   - No effect button is highlighted: the microphone cannot report its effect or colour.
+//   - The highlighted effect button and colour swatch are what peri last SENT the microphone,
+//     from the daemon's record: the microphone cannot report its effect or colour, so this is
+//     not what it is showing, and a change made any other way does not appear.
 Column {
   id: root
 
@@ -100,8 +102,9 @@ Column {
             height: Style.space(34)
             radius: Style.space(8)
             color: "#" + modelData.hex
-            border.width: 1
-            border.color: Color.muted
+            readonly property bool last: Mic.swatchSelected(modelData.hex, root.peri.last)
+            border.width: last ? 3 : 1
+            border.color: last ? Color.foreground : Color.muted
             opacity: root.peri.busy ? 0.4 : 1
             MouseArea {
               anchors.fill: parent
@@ -124,16 +127,19 @@ Column {
             required property var modelData
             width: (effectRow.width - effectRow.spacing * 2) / 3
             enabled: !root.peri.busy
+            selected: Mic.effectSelected(modelData.id, root.peri.last)
             text: modelData.label
             onClicked: root.peri.setEffect(modelData.id, "")
           }
         }
       }
 
+      Caption { text: Mic.lastSetText(root.peri.last) }
       Caption {
-        text: "The microphone cannot report its colour or effect, so nothing is highlighted. "
-          + "A change may be kept in its own memory, so brightness is sent when you let go of the "
-          + "slider, and only if the value changed."
+        text: "The microphone cannot report its colour or effect, so the highlight is what peri "
+          + "last sent it, and a change made any other way does not show. A change may be kept "
+          + "in its own memory, so brightness is sent when you let go of the slider, and only if "
+          + "the value changed."
       }
     }
   }

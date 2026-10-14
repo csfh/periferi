@@ -11,7 +11,9 @@ import "cli.js" as Cli
 //   MySlider { value: mic.brightness; onReleased: v => mic.setBrightness(v) }
 //
 // It reads `peri status <module>` and writes `peri set <module> ...`. Two facts shape it:
-//   - The mic cannot report its effect or colour, so nothing here claims to know them.
+//   - The mic cannot report its effect or colour. The daemon keeps a record of what peri last
+//     sent it, and lastEffect / lastColor expose that record: it is not what the mic shows, and a
+//     change made any other way is not in it.
 //   - A set may be kept in the mic's own memory. So a change is only ever sent from a deliberate
 //     gesture: setBrightness() belongs in a slider's `released` handler (never `moved`, and never
 //     a binding), and after the last release the pane waits `quiet` ms and sends ONE set, so a
@@ -28,6 +30,10 @@ Scope {
   readonly property int brightness: state.brightness   // percent of the protocol's 0-255
   readonly property string mute: state.mute             // "muted", "unmuted" or "unknown"
   readonly property var dial: state.dial                // the level as reported, or null
+  readonly property string lastEffect: state.effect     // what peri last sent: "static", "breathing",
+                                                        // "spectrum", "none", or "" if never
+  readonly property string lastColor: state.color       // six hex digits for "static", else ""
+  readonly property var last: ({ effect: state.effect, color: state.color }) // for mic.js's helpers
   readonly property bool busy: setter.running || debounce.running
   readonly property string error: state.error
 
@@ -69,6 +75,8 @@ Scope {
     property real wanted: 0         // the percent of the last release, waiting to be sent
     property string mute: "unknown"
     property var dial: null
+    property string effect: ""
+    property string color: ""
     property string error: ""
     property string errText: ""
   }
@@ -81,6 +89,8 @@ Scope {
     state.brightness = M.brightnessPercent(s.brightness)
     state.mute = s.mute
     state.dial = s.dial
+    state.effect = s.effect
+    state.color = s.color
   }
 
   Timer {

@@ -6,7 +6,7 @@ TestCase {
   name: "mic"
 
   // What `peri status` prints for a connected mic (bytes copied from the real device).
-  readonly property string full: "module   razer-seiren-v3-chroma\nfirmware 0101\nbrightness 102\nmute     muted\ndial     43\n"
+  readonly property string full: "module   razer-seiren-v3-chroma\nfirmware 0101\nbrightness 102\nmute     muted\ndial     43\neffect   static\ncolor    0000FF\n"
 
   // --- reading `peri status` ------------------------------------------------------------
   function test_parse_status() {
@@ -16,6 +16,48 @@ TestCase {
     compare(s.mute, "muted")
     compare(s.dial, 43)
     compare(s.firmware, "0101")
+    compare(s.effect, "static")
+    compare(s.color, "0000ff")   // lowercased so it equals a preset
+  }
+
+  // The daemon's record of what peri last sent: unknown, or an effect, with a colour only for static.
+  function test_last_effect_and_colour() {
+    var base = "module m\nbrightness 10\n"
+    var s = Mic.parseStatus(base + "effect unknown\ncolor none\n")
+    compare(s.effect, ""); compare(s.color, "")
+    s = Mic.parseStatus(base + "effect none\ncolor none\n")       // "none" is a real effect: Off
+    compare(s.effect, "none"); compare(s.color, "")
+    s = Mic.parseStatus(base + "effect breathing\ncolor 0000ff\n") // a stale colour is not kept
+    compare(s.effect, "breathing"); compare(s.color, "")
+    s = Mic.parseStatus(base + "effect static\ncolor zz\n")
+    compare(s.effect, "static"); compare(s.color, "")
+    s = Mic.parseStatus(base + "effect rainbow\ncolor none\n")
+    compare(s.effect, "")
+    s = Mic.parseStatus(base)
+    compare(s.effect, ""); compare(s.color, "")
+    compare(Mic.parseStatus("").effect, "")
+  }
+
+  // The highlight follows the record; "static" lights its swatch only while it is the last effect.
+  function test_selection_follows_the_record() {
+    var spec = { effect: "spectrum", color: "" }
+    var blue = { effect: "static", color: "0000ff" }
+    var none = { effect: "", color: "" }
+    verify(Mic.effectSelected("spectrum", spec))
+    verify(!Mic.effectSelected("breathing", spec))
+    verify(!Mic.effectSelected("spectrum", none))
+    verify(!Mic.effectSelected("spectrum", null))
+    verify(Mic.swatchSelected("0000ff", blue))
+    verify(Mic.swatchSelected("0000FF", blue))
+    verify(!Mic.swatchSelected("ff0000", blue))
+    verify(!Mic.swatchSelected("0000ff", spec))       // another effect: no swatch is lit
+    verify(!Mic.swatchSelected("0000ff", none))
+    verify(!Mic.swatchSelected("bad", blue))
+    compare(Mic.lastSetText(none), "Not set from peri yet")
+    compare(Mic.lastSetText(null), "Not set from peri yet")
+    compare(Mic.lastSetText(spec), "Last set from peri: spectrum")
+    compare(Mic.lastSetText(blue), "Last set from peri: colour 0000ff")
+    compare(Mic.lastSetText({ effect: "none", color: "" }), "Last set from peri: off")
   }
 
   function test_unknown_mute_and_dial() {
