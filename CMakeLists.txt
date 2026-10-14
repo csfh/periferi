@@ -21,10 +21,12 @@ add_library(tomlc17 STATIC vendor/tomlc17/tomlc17.c)
 target_include_directories(tomlc17 PUBLIC vendor/tomlc17)
 target_compile_options(tomlc17 PRIVATE -w)
 
+find_package(ALSA REQUIRED)
+
 add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/fsutil.c src/scan.c src/xap.c src/razer.c src/razer_dev.c)
-add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/fsutil.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/device_cmd.c src/store.c src/controls.c src/razer.c src/razer_dev.c)
+add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/fsutil.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/device_cmd.c src/audio.c src/store.c src/controls.c src/razer.c src/razer_dev.c)
 target_link_libraries(peri PRIVATE tomlc17)
-target_link_libraries(perid PRIVATE tomlc17)
+target_link_libraries(perid PRIVATE tomlc17 ALSA::ALSA)
 
 install(TARGETS peri perid RUNTIME DESTINATION bin)
 install(DIRECTORY catalog/ DESTINATION share/peri/catalog)
@@ -54,6 +56,10 @@ add_test(NAME razer COMMAND razer_test)
 add_executable(store_test tests/store_test.c src/store.c src/module.c src/fsutil.c src/razer.c)
 target_link_libraries(store_test PRIVATE tomlc17)
 add_test(NAME store COMMAND store_test)
+
+add_executable(audio_test tests/audio_test.c src/audio.c)
+target_link_libraries(audio_test PRIVATE ALSA::ALSA)
+add_test(NAME audio COMMAND audio_test)
 
 add_executable(json_test tests/json_test.c src/json.c)
 add_test(NAME json COMMAND json_test)
