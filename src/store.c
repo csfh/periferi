@@ -27,6 +27,23 @@ bool peri_look_dir(char *buf, size_t size)
     return n > 0 && (size_t)n < size;
 }
 
+static const char *const which_names[] = { "unmuted", "muted" };
+
+bool peri_look_which_parse(const char *name, enum peri_look_which *which)
+{
+    for (int i = 0; i < 2; i++)
+        if (name && strcmp(name, which_names[i]) == 0) {
+            *which = (enum peri_look_which)i;
+            return true;
+        }
+    return false;
+}
+
+const char *peri_look_which_name(enum peri_look_which which)
+{
+    return which_names[which == PERI_LOOK_MUTED ? 1 : 0];
+}
+
 // Six hex digits, copied lowercased into out (7 bytes).
 static bool lower_hex(const char *s, char out[7])
 {
@@ -41,25 +58,122 @@ static bool lower_hex(const char *s, char out[7])
     return true;
 }
 
-bool peri_look_save(const char *module_id, const char *effect, const char *color)
+// The rules for a look, shared by save and load: a known effect (or none), a colour exactly when
+// the effect is "static", a brightness of 0-255 (or none). On success *out is the clean look.
+static bool clean(const struct peri_look *in, struct peri_look *out)
 {
-    if (!module_id || !peri_module_id_valid(module_id) || !effect || razer_effect_id(effect) < 0)
+    *out = PERI_LOOK_EMPTY;
+    if (in->effect[0]) {
+        if (razer_effect_id(in->effect) < 0 || strlen(in->effect) >= sizeof out->effect)
+            return false;
+        snprintf(out->effect, sizeof out->effect, "%s", in->effect);
+        if (strcmp(in->effect, "static") == 0 && !lower_hex(in->color, out->color))
+            return false;
+    }
+    if (in->brightness < -1 || in->brightness > 255)
         return false;
-    char hex[7] = "";
-    bool is_static = strcmp(effect, "static") == 0;
-    if (is_static && !lower_hex(color, hex))
-        return false;
+    out->brightness = in->brightness;
+    return true;
+}
 
+static bool look_path(const char *module_id, char *dir, size_t dir_size, char *path, size_t size)
+{
+    return module_id && peri_module_id_valid(module_id) && peri_look_dir(dir, dir_size)
+           && snprintf(path, size, "%s/%s.toml", dir, module_id) < (int)size;
+}
+
+// Read both looks from the file; anything missing or invalid is an empty look.
+static void load_both(const char *module_id, struct peri_look looks[2])
+{
+    looks[0] = looks[1] = PERI_LOOK_EMPTY;
+    char dir[PATH_MAX], path[PATH_MAX];
+    if (!look_path(module_id, dir, sizeof dir, path, sizeof path))
+        return;
+
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0)
+        return;
+    char text[2048];
+    struct stat st;
+    ssize_t n = fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size < (off_t)sizeof text
+                    ? read(fd, text, sizeof text - 1) : -1;
+    close(fd);
+    if (n <= 0)
+        return;
+
+    toml_result_t result = toml_parse(text, (int)n);
+    if (result.ok) {
+        for (int i = 0; i < 2; i++) {
+            char key[48];
+            struct peri_look raw = PERI_LOOK_EMPTY;
+
+            snprintf(key, sizeof key, "%s.effect", which_names[i]);
+            toml_datum_t effect = toml_seek(result.toptab, key);
+            snprintf(key, sizeof key, "%s.color", which_names[i]);
+            toml_datum_t color = toml_seek(result.toptab, key);
+            snprintf(key, sizeof key, "%s.brightness", which_names[i]);
+            toml_datum_t brightness = toml_seek(result.toptab, key);
+
+            if (effect.type == TOML_STRING && effect.u.s && strlen(effect.u.s) < sizeof raw.effect)
+                snprintf(raw.effect, sizeof raw.effect, "%s", effect.u.s);
+            if (color.type == TOML_STRING && color.u.s && strlen(color.u.s) == 6)
+                snprintf(raw.color, sizeof raw.color, "%s", color.u.s);
+            if (brightness.type == TOML_INT64 && brightness.u.int64 >= 0 && brightness.u.int64 <= 255)
+                raw.brightness = (int)brightness.u.int64;
+
+            // A bad field spoils only itself: an invalid effect or a static one without a colour
+            // is dropped, the brightness is kept. A colour on another effect is ignored.
+            struct peri_look good;
+            if (!clean(&raw, &good)) {
+                raw.effect[0] = '\0';
+                raw.color[0] = '\0';
+                clean(&raw, &good);
+            }
+            looks[i] = good;
+        }
+    }
+    toml_free(result);
+}
+
+struct peri_look peri_look_load(const char *module_id, enum peri_look_which which)
+{
+    struct peri_look looks[2];
+    load_both(module_id, looks);
+    return looks[which == PERI_LOOK_MUTED ? 1 : 0];
+}
+
+static int append_look(char *buf, size_t size, enum peri_look_which which, const struct peri_look *l)
+{
+    if (!l->effect[0] && l->brightness < 0)
+        return 0; // an empty look is not written
+    int n = snprintf(buf, size, "[%s]\n", peri_look_which_name(which));
+    if (l->effect[0])
+        n += snprintf(buf + n, size - (size_t)n, "effect = \"%s\"\n", l->effect);
+    if (l->color[0])
+        n += snprintf(buf + n, size - (size_t)n, "color = \"%s\"\n", l->color);
+    if (l->brightness >= 0)
+        n += snprintf(buf + n, size - (size_t)n, "brightness = %d\n", l->brightness);
+    return n + snprintf(buf + n, size - (size_t)n, "\n");
+}
+
+bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look)
+{
+    struct peri_look mine;
     char dir[PATH_MAX], path[PATH_MAX], tmp[PATH_MAX];
-    if (!peri_look_dir(dir, sizeof dir)
-        || snprintf(path, sizeof path, "%s/%s.toml", dir, module_id) >= (int)sizeof path
-        || snprintf(tmp, sizeof tmp, "%s/.%s.toml.tmp", dir, module_id) >= (int)sizeof tmp
-        || !peri_mkdir_p(dir))
+    if (!look || !look_path(module_id, dir, sizeof dir, path, sizeof path) || !clean(look, &mine)
+        || snprintf(tmp, sizeof tmp, "%s/.%s.toml.tmp", dir, module_id) >= (int)sizeof tmp)
         return false;
 
-    char text[128];
-    int len = is_static ? snprintf(text, sizeof text, "effect = \"%s\"\ncolor = \"%s\"\n", effect, hex)
-                        : snprintf(text, sizeof text, "effect = \"%s\"\n", effect);
+    struct peri_look looks[2];
+    load_both(module_id, looks); // keep the other look as it is
+    looks[which == PERI_LOOK_MUTED ? 1 : 0] = mine;
+
+    char text[512];
+    int len = append_look(text, sizeof text, PERI_LOOK_UNMUTED, &looks[0]);
+    len += append_look(text + len, sizeof text - (size_t)len, PERI_LOOK_MUTED, &looks[1]);
+    if (len >= (int)sizeof text || !peri_mkdir_p(dir))
+        return false;
+
     int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0644);
     if (fd < 0)
         return false;
@@ -70,44 +184,4 @@ bool peri_look_save(const char *module_id, const char *effect, const char *color
         return false;
     }
     return true;
-}
-
-struct peri_look peri_look_load(const char *module_id)
-{
-    struct peri_look none = {};
-    char dir[PATH_MAX], path[PATH_MAX];
-    if (!module_id || !peri_module_id_valid(module_id) || !peri_look_dir(dir, sizeof dir)
-        || snprintf(path, sizeof path, "%s/%s.toml", dir, module_id) >= (int)sizeof path)
-        return none;
-
-    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-    if (fd < 0)
-        return none;
-    char text[1024];
-    struct stat st;
-    ssize_t n = fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size < (off_t)sizeof text
-                    ? read(fd, text, sizeof text - 1) : -1;
-    close(fd);
-    if (n <= 0)
-        return none;
-
-    toml_result_t result = toml_parse(text, (int)n);
-    struct peri_look look = {};
-    if (result.ok) {
-        toml_datum_t effect = toml_seek(result.toptab, "effect");
-        toml_datum_t color = toml_seek(result.toptab, "color");
-        bool known = effect.type == TOML_STRING && effect.u.s && razer_effect_id(effect.u.s) >= 0
-                     && strlen(effect.u.s) < sizeof look.effect;
-        if (known) {
-            bool is_static = strcmp(effect.u.s, "static") == 0;
-            char hex[7] = "";
-            // A static look needs a valid colour; every other effect has none, whatever the file says.
-            if (!is_static || (color.type == TOML_STRING && lower_hex(color.u.s, hex))) {
-                snprintf(look.effect, sizeof look.effect, "%s", effect.u.s);
-                memcpy(look.color, hex, sizeof hex);
-            }
-        }
-    }
-    toml_free(result);
-    return look;
 }

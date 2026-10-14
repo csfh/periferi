@@ -3,29 +3,44 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// What peri last sent to a device that cannot be asked for its lighting. The mic reports its
-// brightness but neither its effect nor its colour, so the panel can only show a stable choice if
-// we keep a record. One small file per module: $XDG_CONFIG_HOME/peri/state/<module-id>.toml
-// (else ~/.config/peri/state/), holding what the device ACCEPTED, written only after it did:
+// The looks peri keeps for a device that cannot be asked for its lighting. The mic reports its
+// brightness but neither its effect nor its colour, so what a user chose in the panel has to be
+// kept on our side. One small file per module: $XDG_CONFIG_HOME/peri/state/<module-id>.toml (else
+// ~/.config/peri/state/), with one table per look:
 //
+//   [unmuted]
 //   effect = "static"
 //   color = "0000ff"     (only for "static"; every other effect has none)
+//   brightness = 102     (0-255)
 //
-// It is a record of what peri sent, not of what the device shows: a change made any other way
-// is not in it.
+//   [muted]
+//   effect = "breathing"
+//
+// A look is the user's saved SETTINGS, not what the device is showing: saving one never touches
+// the device, and applying it is a separate, deliberate step. Any field may be missing.
+
+enum peri_look_which { PERI_LOOK_UNMUTED, PERI_LOOK_MUTED };
 
 struct peri_look {
-    char effect[16]; // "none", "static", "breathing" or "spectrum"; "" if unknown
-    char color[7];   // six lowercase hex digits for "static"; "" otherwise
+    char effect[16];    // "none", "static", "breathing" or "spectrum"; "" if not set
+    char color[7];      // six lowercase hex digits for "static"; "" otherwise
+    int brightness;     // 0-255, or -1 if not set
 };
+
+#define PERI_LOOK_EMPTY ((struct peri_look){ .brightness = -1 })
 
 bool peri_look_dir(char *buf, size_t size);
 
-// Save the look a device accepted. `color` is needed for "static" and ignored for the other
-// effects, which clear any earlier colour. Atomic (temp file, then rename). False on any problem,
-// including an invalid module id, effect or colour; the old record is then left as it was.
-bool peri_look_save(const char *module_id, const char *effect, const char *color);
+// "unmuted" or "muted".
+bool peri_look_which_parse(const char *name, enum peri_look_which *which);
+const char *peri_look_which_name(enum peri_look_which which);
 
-// The saved look, or an empty one (effect "") when there is none, the file cannot be read, or
-// its contents are not a look this program would have written. Never fails loudly.
-struct peri_look peri_look_load(const char *module_id);
+// Save one look, keeping the other as it is. Atomic (temp file, then rename). False on any
+// problem, including an invalid module id, effect, colour or brightness; the file is then left
+// as it was. "static" needs a colour; every other effect drops it.
+bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look);
+
+// A saved look, or an empty one when there is none, the file cannot be read, or what is in it is
+// not something this program would have written. A file in an older format loads as empty. Never
+// fails loudly; every field is validated again here.
+struct peri_look peri_look_load(const char *module_id, enum peri_look_which which);

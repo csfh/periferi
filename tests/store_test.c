@@ -32,6 +32,22 @@ static void write_file(const char *path, const char *text)
 }
 
 #define ID "razer-seiren-v3-chroma"
+#define UN PERI_LOOK_UNMUTED
+#define MU PERI_LOOK_MUTED
+
+static struct peri_look look(const char *effect, const char *color, int brightness)
+{
+    struct peri_look l = PERI_LOOK_EMPTY;
+    snprintf(l.effect, sizeof l.effect, "%s", effect);
+    snprintf(l.color, sizeof l.color, "%s", color);
+    l.brightness = brightness;
+    return l;
+}
+
+static bool is_empty(struct peri_look l)
+{
+    return l.effect[0] == '\0' && l.color[0] == '\0' && l.brightness == -1;
+}
 
 int main(void)
 {
@@ -43,74 +59,104 @@ int main(void)
     char dir[512], file[600];
     CHECK(peri_look_dir(dir, sizeof dir));
     snprintf(file, sizeof file, "%s/peri/state/" ID ".toml", root);
-    CHECK(strstr(dir, "/peri/state") != nullptr && strncmp(dir, root, strlen(root)) == 0);
+    CHECK(strncmp(dir, root, strlen(root)) == 0 && strstr(dir, "/peri/state") != nullptr);
 
-    // Nothing saved yet: unknown, not "off".
-    struct peri_look l = peri_look_load(ID);
-    CHECK(l.effect[0] == '\0' && l.color[0] == '\0');
+    enum peri_look_which w;
+    CHECK(peri_look_which_parse("unmuted", &w) && w == UN);
+    CHECK(peri_look_which_parse("muted", &w) && w == MU);
+    CHECK(!peri_look_which_parse("Muted", &w) && !peri_look_which_parse("", &w)
+          && !peri_look_which_parse(nullptr, &w));
+    CHECK(strcmp(peri_look_which_name(UN), "unmuted") == 0
+          && strcmp(peri_look_which_name(MU), "muted") == 0);
 
-    // A static look keeps its colour, lowercased so it equals a preset.
-    CHECK(peri_look_save(ID, "static", "FF00aa"));
-    l = peri_look_load(ID);
-    CHECK(strcmp(l.effect, "static") == 0 && strcmp(l.color, "ff00aa") == 0);
+    // Nothing saved yet: both looks are empty, which is not the effect "none" (Off).
+    CHECK(is_empty(peri_look_load(ID, UN)) && is_empty(peri_look_load(ID, MU)));
 
-    // Any other effect clears the colour, or an old swatch would stay highlighted.
-    CHECK(peri_look_save(ID, "breathing", "0000ff"));
-    l = peri_look_load(ID);
-    CHECK(strcmp(l.effect, "breathing") == 0 && l.color[0] == '\0');
-    CHECK(peri_look_save(ID, "none", nullptr));
-    l = peri_look_load(ID);
-    CHECK(strcmp(l.effect, "none") == 0 && l.color[0] == '\0'); // "none" is a real effect
+    // The two looks are independent: saving one leaves the other as it was.
+    struct peri_look blue = look("static", "0000FF", 102); // colour is kept lowercase
+    CHECK(peri_look_save(ID, UN, &blue));
+    struct peri_look l = peri_look_load(ID, UN);
+    CHECK(strcmp(l.effect, "static") == 0 && strcmp(l.color, "0000ff") == 0 && l.brightness == 102);
+    CHECK(is_empty(peri_look_load(ID, MU)));
 
-    // Bad input is refused and leaves the record as it was.
-    CHECK(!peri_look_save(ID, "static", nullptr));
-    CHECK(!peri_look_save(ID, "static", "00ff"));
-    CHECK(!peri_look_save(ID, "static", "zz0000"));
-    CHECK(!peri_look_save(ID, "rainbow", "0000ff"));
-    CHECK(!peri_look_save(ID, nullptr, nullptr));
-    CHECK(!peri_look_save("../evil", "none", nullptr));
-    CHECK(!peri_look_save("Bad Id", "none", nullptr));
-    l = peri_look_load(ID);
-    CHECK(strcmp(l.effect, "none") == 0);
-    char outside[600];
+    struct peri_look breath = look("breathing", "", -1);
+    CHECK(peri_look_save(ID, MU, &breath));
+    l = peri_look_load(ID, MU);
+    CHECK(strcmp(l.effect, "breathing") == 0 && l.color[0] == '\0' && l.brightness == -1);
+    l = peri_look_load(ID, UN); // untouched by the second save
+    CHECK(strcmp(l.effect, "static") == 0 && strcmp(l.color, "0000ff") == 0 && l.brightness == 102);
+
+    // Another effect drops the colour, or an old swatch would stay selected. "none" is a real effect.
+    struct peri_look off = look("none", "ff0000", 0);
+    CHECK(peri_look_save(ID, UN, &off));
+    l = peri_look_load(ID, UN);
+    CHECK(strcmp(l.effect, "none") == 0 && l.color[0] == '\0' && l.brightness == 0);
+
+    // A look may hold only a brightness, or nothing at all.
+    struct peri_look only_b = look("", "", 200);
+    CHECK(peri_look_save(ID, UN, &only_b));
+    l = peri_look_load(ID, UN);
+    CHECK(l.effect[0] == '\0' && l.brightness == 200);
+    struct peri_look nothing = PERI_LOOK_EMPTY;
+    CHECK(peri_look_save(ID, UN, &nothing));
+    CHECK(is_empty(peri_look_load(ID, UN)));
+    l = peri_look_load(ID, MU);
+    CHECK(strcmp(l.effect, "breathing") == 0);
+
+    // Bad input is refused and leaves the file as it was.
+    struct peri_look good = look("spectrum", "", 50);
+    CHECK(peri_look_save(ID, UN, &good));
+    struct peri_look bad_static = look("static", "", 10), bad_hex = look("static", "zz0000", 10),
+                     short_hex = look("static", "00ff", 10), bad_effect = look("rainbow", "", 10),
+                     bad_b = look("none", "", 300), neg_b = look("none", "", -5);
+    CHECK(!peri_look_save(ID, UN, &bad_static) && !peri_look_save(ID, UN, &bad_hex)
+          && !peri_look_save(ID, UN, &short_hex) && !peri_look_save(ID, UN, &bad_effect)
+          && !peri_look_save(ID, UN, &bad_b) && !peri_look_save(ID, UN, &neg_b));
+    CHECK(!peri_look_save(ID, UN, nullptr));
+    CHECK(!peri_look_save("../evil", UN, &good) && !peri_look_save("Bad Id", UN, &good)
+          && !peri_look_save(nullptr, UN, &good));
+    l = peri_look_load(ID, UN);
+    CHECK(strcmp(l.effect, "spectrum") == 0 && l.brightness == 50);
+    char outside[600], tmp[600];
     snprintf(outside, sizeof outside, "%s/peri/evil.toml", root);
-    CHECK(access(outside, F_OK) != 0);
-
-    // No temp file is left behind.
-    char tmp[600];
     snprintf(tmp, sizeof tmp, "%s/peri/state/." ID ".toml.tmp", root);
-    CHECK(access(tmp, F_OK) != 0);
+    CHECK(access(outside, F_OK) != 0 && access(tmp, F_OK) != 0);
 
-    // A file that is not a look this program wrote counts as unknown, never as an error.
+    // The old single-look format (what an earlier version wrote) loads as two empty looks, and
+    // the first save replaces it.
+    write_file(file, "effect = \"none\"\n");
+    CHECK(is_empty(peri_look_load(ID, UN)) && is_empty(peri_look_load(ID, MU)));
+    write_file(file, "effect = \"static\"\ncolor = \"0000ff\"\n");
+    CHECK(is_empty(peri_look_load(ID, UN)));
+    CHECK(peri_look_save(ID, MU, &good));
+    CHECK(strcmp(peri_look_load(ID, MU).effect, "spectrum") == 0 && is_empty(peri_look_load(ID, UN)));
+
+    // A file that is not what this program wrote counts as unknown, never as an error. A bad
+    // field spoils only itself.
     write_file(file, "this is not toml = = =\n");
-    l = peri_look_load(ID);
-    CHECK(l.effect[0] == '\0');
-    write_file(file, "effect = \"rainbow\"\n");
-    l = peri_look_load(ID);
-    CHECK(l.effect[0] == '\0');
-    write_file(file, "effect = \"static\"\n"); // static needs a colour
-    l = peri_look_load(ID);
-    CHECK(l.effect[0] == '\0');
-    write_file(file, "effect = \"static\"\ncolor = \"nothex\"\n");
-    l = peri_look_load(ID);
-    CHECK(l.effect[0] == '\0');
-    write_file(file, "effect = 5\n");
-    l = peri_look_load(ID);
-    CHECK(l.effect[0] == '\0');
-    write_file(file, "effect = \"spectrum\"\ncolor = \"0000ff\"\n"); // a stray colour is ignored
-    l = peri_look_load(ID);
-    CHECK(strcmp(l.effect, "spectrum") == 0 && l.color[0] == '\0');
+    CHECK(is_empty(peri_look_load(ID, UN)) && is_empty(peri_look_load(ID, MU)));
     write_file(file, "");
-    l = peri_look_load(ID);
-    CHECK(l.effect[0] == '\0');
+    CHECK(is_empty(peri_look_load(ID, UN)));
+    write_file(file, "[unmuted]\neffect = \"rainbow\"\nbrightness = 70\n");
+    l = peri_look_load(ID, UN);
+    CHECK(l.effect[0] == '\0' && l.brightness == 70);
+    write_file(file, "[unmuted]\neffect = \"static\"\n"); // static needs a colour
+    CHECK(peri_look_load(ID, UN).effect[0] == '\0');
+    write_file(file, "[unmuted]\neffect = \"static\"\ncolor = \"nothex\"\nbrightness = 9\n");
+    l = peri_look_load(ID, UN);
+    CHECK(l.effect[0] == '\0' && l.color[0] == '\0' && l.brightness == 9);
+    write_file(file, "[unmuted]\neffect = 5\nbrightness = 300\n");
+    CHECK(is_empty(peri_look_load(ID, UN)));
+    write_file(file, "[muted]\neffect = \"spectrum\"\ncolor = \"0000ff\"\nbrightness = \"high\"\n");
+    l = peri_look_load(ID, MU); // a stray colour and a non-number are ignored
+    CHECK(strcmp(l.effect, "spectrum") == 0 && l.color[0] == '\0' && l.brightness == -1);
+    CHECK(is_empty(peri_look_load(ID, UN)));
 
     // A symlink is not followed, and an invalid id never touches the disk.
     unlink(file);
     CHECK(symlink("/etc/hostname", file) == 0);
-    l = peri_look_load(ID);
-    CHECK(l.effect[0] == '\0');
-    l = peri_look_load("../x");
-    CHECK(l.effect[0] == '\0');
+    CHECK(is_empty(peri_look_load(ID, UN)));
+    CHECK(is_empty(peri_look_load("../x", UN)));
 
     // Without XDG_CONFIG_HOME the home directory is used.
     char home[] = "/tmp/peri-store-home-XXXXXX";
@@ -122,9 +168,8 @@ int main(void)
     char want[600];
     snprintf(want, sizeof want, "%s/.config/peri/state", home);
     CHECK(strcmp(dir, want) == 0);
-    CHECK(peri_look_save(ID, "spectrum", nullptr));
-    l = peri_look_load(ID);
-    CHECK(strcmp(l.effect, "spectrum") == 0);
+    CHECK(peri_look_save(ID, MU, &good));
+    CHECK(strcmp(peri_look_load(ID, MU).effect, "spectrum") == 0);
 
     nftw(root, rm_entry, 16, FTW_DEPTH | FTW_PHYS);
     nftw(home, rm_entry, 16, FTW_DEPTH | FTW_PHYS);
