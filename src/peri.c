@@ -17,6 +17,7 @@
 #include "json.h"
 #include "module.h"
 #include "razer_dev.h"
+#include "razer_scan.h"
 #include "scan.h"
 #include "udev.h"
 #include "xap.h"
@@ -909,6 +910,129 @@ static int cmd_status(const char *id)
     return forward(req);
 }
 
+// Everything `peri decode --scan` found, kept for the summary.
+struct decode_state {
+    struct razer_found *frames;
+    size_t count, capacity;
+    bool summary;
+};
+
+static void decode_collect(const struct razer_found *found, void *user)
+{
+    struct decode_state *s = user;
+    char line[320];
+    if (!s->summary) {
+        razer_describe(found, line, sizeof line);
+        printf("packet %zu: %s\n", found->packet, line);
+    }
+    if (s->count < s->capacity)
+        s->frames[s->count++] = *found;
+}
+
+// The distinct commands, each once with how often it was seen and a sample, new ones flagged.
+static void decode_summary(const struct decode_state *s)
+{
+    size_t unknown = 0;
+    for (size_t i = 0; i < s->count; i++) {
+        const struct razer_found *f = &s->frames[i];
+        bool seen = false;
+        for (size_t j = 0; j < i && !seen; j++)
+            seen = s->frames[j].frame[7] == f->frame[7] && s->frames[j].frame[8] == f->frame[8]
+                   && s->frames[j].request_crc == f->request_crc;
+        if (seen)
+            continue;
+        size_t times = 0;
+        for (size_t j = i; j < s->count; j++)
+            if (s->frames[j].frame[7] == f->frame[7] && s->frames[j].frame[8] == f->frame[8]
+                && s->frames[j].request_crc == f->request_crc)
+                times++;
+        char line[320];
+        razer_describe(f, line, sizeof line);
+        printf("%4zux  %s\n", times, line);
+        if (!razer_command_name(f->frame[7], f->frame[8]))
+            unknown++;
+    }
+    printf("%zu frame%s, %zu command%s we do not know yet\n", s->count, s->count == 1 ? "" : "s",
+           unknown, unknown == 1 ? "" : "s");
+}
+
+// peri decode <hex bytes>           describe one frame (64 bytes, report id 07 first)
+// peri decode --scan <file|-> [--summary]
+//                                   find every Razer frame in a Wireshark text dump (`tshark -x`)
+// Reads text only: it never opens a device. See docs/capturing-synapse.md.
+static int cmd_decode(int argc, char **argv)
+{
+    if (argc >= 4 && strcmp(argv[2], "--scan") == 0) {
+        FILE *f = strcmp(argv[3], "-") == 0 ? stdin : fopen(argv[3], "r");
+        if (!f) {
+            fprintf(stderr, "peri: %s: %s\n", argv[3], strerror(errno));
+            return 1;
+        }
+        size_t cap = 1 << 16, len = 0;
+        char *text = malloc(cap);
+        for (size_t n; text && (n = fread(text + len, 1, cap - len - 1, f)) > 0;) {
+            len += n;
+            if (len + 1 >= cap) {
+                if (cap >= (64u << 20)) {
+                    fprintf(stderr, "peri: the dump is larger than 64 MiB\n");
+                    free(text);
+                    return 1;
+                }
+                char *bigger = realloc(text, cap *= 2);
+                if (!bigger) {
+                    free(text);
+                    return 1;
+                }
+                text = bigger;
+            }
+        }
+        if (f != stdin)
+            fclose(f);
+        if (!text)
+            return 1;
+        text[len] = '\0';
+
+        struct decode_state s = { .frames = calloc(8192, sizeof *s.frames), .capacity = 8192,
+                                  .summary = argc >= 5 && strcmp(argv[4], "--summary") == 0 };
+        if (!s.frames) {
+            free(text);
+            return 1;
+        }
+        size_t n = razer_scan_dump(text, decode_collect, &s);
+        if (s.summary)
+            decode_summary(&s);
+        else if (n == 0)
+            puts("no Razer frames found");
+        free(s.frames);
+        free(text);
+        return 0;
+    }
+
+    char joined[512] = "";
+    for (int i = 2; i < argc; i++)
+        snprintf(joined + strlen(joined), sizeof joined - strlen(joined), "%s ", argv[i]);
+    struct razer_found found = { .packet = 1 };
+    if (argc < 3 || razer_parse_hex(joined, found.frame, sizeof found.frame) != RAZER_REPORT_LEN
+        || found.frame[0] != RAZER_REPORT_ID) {
+        fprintf(stderr, "peri: decode takes the 64 bytes of one frame as hex, starting with 07, "
+                        "or `--scan <file|-> [--summary]`\n");
+        return 2;
+    }
+    uint8_t x = 0, y = 0;
+    for (int i = 1; i <= 62; i++)
+        x ^= found.frame[i];
+    for (int i = 2; i <= 61; i++)
+        y ^= found.frame[i];
+    found.request_crc = x == found.frame[63] && found.frame[1] == 0x00;
+    found.reply_crc = y == found.frame[62] && found.frame[1] != 0x00;
+    char line[320];
+    razer_describe(&found, line, sizeof line);
+    printf("%s\n", line);
+    if (!found.request_crc && !found.reply_crc)
+        printf("note: the checksum fits neither the request rule (byte 63) nor the reply rule (byte 62)\n");
+    return 0;
+}
+
 // peri look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>]
 //           [color2=<rrggbb>] [brightness=<0-255>]
 // A module keeps two saved looks. get and save only touch the saved file; apply is the one that
@@ -1005,6 +1129,8 @@ int main(int argc, char **argv)
         return cmd_rgb(argc, argv);
     if (argc == 3 && strcmp(argv[1], "status") == 0)
         return cmd_status(argv[2]);
+    if (argc >= 3 && strcmp(argv[1], "decode") == 0)
+        return cmd_decode(argc, argv);
     if (argc >= 4 && argc <= 8 && strcmp(argv[1], "audio") == 0)
         return cmd_audio(argc, argv);
     if (argc >= 5 && argc <= 9 && strcmp(argv[1], "look") == 0)
@@ -1012,6 +1138,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 6 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [brightness=<n>]|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|xap <node> <route-hex>|blob <node>|status <module-id>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [brightness=<n>]|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
