@@ -115,18 +115,6 @@ static bool parse_color(const char *s, uint8_t rgb[3])
     return true;
 }
 
-static int effect_id(const char *name)
-{
-    static const struct { const char *name; int id; } effects[] = {
-        { "none", RAZER_EFFECT_NONE }, { "static", RAZER_EFFECT_STATIC },
-        { "breathing", RAZER_EFFECT_BREATHING }, { "spectrum", RAZER_EFFECT_SPECTRUM },
-    };
-    for (size_t i = 0; i < sizeof effects / sizeof *effects; i++)
-        if (strcmp(effects[i].name, name) == 0)
-            return effects[i].id;
-    return -1;
-}
-
 // set <module-id> brightness=<0-255>
 // set <module-id> effect=<none|static|breathing|spectrum> [color=<rrggbb>]
 // One kind of change per request. The device cannot be asked what its effect or colour is, so
@@ -157,7 +145,7 @@ void set_handle(const char *args, char *reply, size_t size)
             }
             brightness = (long)v;
         } else if (strncmp(t, "effect=", 7) == 0 && effect < 0) {
-            effect = effect_id(t + 7);
+            effect = razer_effect_id(t + 7);
             effect_name = t + 7;
             if (effect < 0) {
                 err(reply, size, "effect must be none, static, breathing or spectrum", id);

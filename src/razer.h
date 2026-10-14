@@ -63,6 +63,9 @@ enum razer_effect {
 };
 #define RAZER_EFFECT_ARGS_MAX 9
 
+// The effect for a name ("none", "static", "breathing", "spectrum"), or -1.
+int razer_effect_id(const char *name);
+
 // The arguments of an effect set: variable storage, LED id 0, the effect, then its parameters.
 // `rgb` (3 bytes) is required for static and optional for breathing; the other effects ignore it.
 // Returns the data size (6 or 9), or 0 if the effect is unknown or lacks its colour.

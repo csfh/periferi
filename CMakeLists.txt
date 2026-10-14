@@ -21,8 +21,8 @@ add_library(tomlc17 STATIC vendor/tomlc17/tomlc17.c)
 target_include_directories(tomlc17 PUBLIC vendor/tomlc17)
 target_compile_options(tomlc17 PRIVATE -w)
 
-add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/scan.c src/xap.c src/razer.c src/razer_dev.c)
-add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/device_cmd.c src/controls.c src/razer.c src/razer_dev.c)
+add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/fsutil.c src/scan.c src/xap.c src/razer.c src/razer_dev.c)
+add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/fsutil.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/device_cmd.c src/store.c src/controls.c src/razer.c src/razer_dev.c)
 target_link_libraries(peri PRIVATE tomlc17)
 target_link_libraries(perid PRIVATE tomlc17)
 
@@ -37,11 +37,11 @@ add_executable(scan_test tests/scan_test.c src/scan.c)
 target_compile_definitions(scan_test PRIVATE FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/descriptors")
 add_test(NAME scan COMMAND scan_test)
 
-add_executable(inventory_test tests/inventory_test.c src/inventory.c src/module.c src/scan.c)
+add_executable(inventory_test tests/inventory_test.c src/inventory.c src/module.c src/fsutil.c src/scan.c)
 target_link_libraries(inventory_test PRIVATE tomlc17)
 add_test(NAME inventory COMMAND inventory_test)
 
-add_executable(udev_test tests/udev_test.c src/udev.c src/module.c)
+add_executable(udev_test tests/udev_test.c src/udev.c src/module.c src/fsutil.c)
 target_link_libraries(udev_test PRIVATE tomlc17)
 add_test(NAME udev COMMAND udev_test)
 
@@ -51,10 +51,14 @@ add_test(NAME rgb_settings COMMAND rgb_settings_test)
 add_executable(razer_test tests/razer_test.c src/razer.c)
 add_test(NAME razer COMMAND razer_test)
 
+add_executable(store_test tests/store_test.c src/store.c src/module.c src/fsutil.c src/razer.c)
+target_link_libraries(store_test PRIVATE tomlc17)
+add_test(NAME store COMMAND store_test)
+
 add_executable(json_test tests/json_test.c src/json.c)
 add_test(NAME json COMMAND json_test)
 
-add_executable(module_test tests/module_test.c src/module.c)
+add_executable(module_test tests/module_test.c src/module.c src/fsutil.c)
 target_link_libraries(module_test PRIVATE tomlc17)
 target_compile_definitions(module_test PRIVATE
   CATALOG_DIR="${CMAKE_SOURCE_DIR}/catalog"

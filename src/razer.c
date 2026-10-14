@@ -100,3 +100,15 @@ void razer_state_apply(struct razer_state *state, const struct razer_event *ev)
     else if (ev->kind == RAZER_EVENT_DIAL)
         state->dial = ev->value;
 }
+
+int razer_effect_id(const char *name)
+{
+    static const struct { const char *name; int id; } effects[] = {
+        { "none", RAZER_EFFECT_NONE }, { "static", RAZER_EFFECT_STATIC },
+        { "breathing", RAZER_EFFECT_BREATHING }, { "spectrum", RAZER_EFFECT_SPECTRUM },
+    };
+    for (size_t i = 0; i < sizeof effects / sizeof *effects; i++)
+        if (name && strcmp(effects[i].name, name) == 0)
+            return effects[i].id;
+    return -1;
+}

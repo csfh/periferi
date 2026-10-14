@@ -1,0 +1,12 @@
+#pragma once
+
+#include <stdbool.h>
+#include <stddef.h>
+
+// Small file helpers shared by the module installer and the state store.
+
+// mkdir -p (mode 0755). True if the directory exists afterwards.
+bool peri_mkdir_p(const char *dir);
+
+// write() until everything is written, retrying on EINTR. False on any error.
+bool peri_write_all(int fd, const char *buf, size_t len);

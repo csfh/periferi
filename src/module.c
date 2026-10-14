@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "fsutil.h"
 #include "scan.h"
 #include "tomlc17.h"
 
@@ -217,37 +218,6 @@ enum peri_select peri_module_select(const struct peri_device *devs, size_t dev_c
     return PERI_SELECT_OK;
 }
 
-static bool mkdir_p(const char *dir)
-{
-    char path[PATH_MAX];
-    if (snprintf(path, sizeof path, "%s", dir) >= (int)sizeof path)
-        return false;
-    for (char *p = path + 1; *p; p++) {
-        if (*p != '/')
-            continue;
-        *p = '\0';
-        int r = mkdir(path, 0755);
-        *p = '/';
-        if (r < 0 && errno != EEXIST)
-            return false;
-    }
-    return mkdir(path, 0755) == 0 || errno == EEXIST;
-}
-
-static bool write_all(int fd, const char *buf, size_t len)
-{
-    while (len > 0) {
-        ssize_t n = write(fd, buf, len);
-        if (n < 0 && errno == EINTR)
-            continue;
-        if (n <= 0)
-            return false;
-        buf += n;
-        len -= (size_t)n;
-    }
-    return true;
-}
-
 bool peri_module_install(const char *catalog_dir, const char *installed_dir, const char *id,
                          struct peri_module *out, char *err, size_t err_size)
 {
@@ -277,7 +247,7 @@ bool peri_module_install(const char *catalog_dir, const char *installed_dir, con
     int dirfd = -1, idfd = -1, tmpfd = -1;
     bool ok = false;
     static const char tmp_name[] = ".module.toml.tmp";
-    if (!mkdir_p(installed_dir)
+    if (!peri_mkdir_p(installed_dir)
         || (dirfd = open(installed_dir, O_DIRECTORY | O_CLOEXEC)) < 0) {
         fail(err, err_size, "cannot create %s: %s", installed_dir, strerror(errno));
     } else if ((mkdirat(dirfd, id, 0755) < 0 && errno != EEXIST)
@@ -287,7 +257,7 @@ bool peri_module_install(const char *catalog_dir, const char *installed_dir, con
                                O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0644)) < 0) {
         fail(err, err_size, "cannot write in %s/%s: %s", installed_dir, id, strerror(errno));
     } else {
-        bool wrote = write_all(tmpfd, buf, len);
+        bool wrote = peri_write_all(tmpfd, buf, len);
         int saved = errno;
         bool closed = close(tmpfd) == 0; // always close, even after a failed write
         tmpfd = -1;
