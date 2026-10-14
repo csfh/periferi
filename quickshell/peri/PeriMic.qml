@@ -32,6 +32,7 @@ Scope {
   // Apply waits for any save to reach the daemon, so it can never send an older look than the one shown.
   readonly property bool canApply: state.online && M.canApply(root.look) && !applier.running
                                    && !saver.running && state.pending === null
+  readonly property bool follow: state.follow   // the daemon applies the matching look when the mic is (un)muted
   readonly property bool busy: applier.running
   readonly property string notice: state.notice  // what the last apply sent, or ""
   readonly property string error: state.error !== "" ? state.error : state.audioError
@@ -110,6 +111,14 @@ Scope {
     audioSetter.running = true
   }
 
+  // Turn following the mute state on or off (the daemon keeps it with the looks; a file, not the mic).
+  function setFollow(on) {
+    if (root.moduleId === "" || follower.running) return
+    state.follow = on // shown at once; the daemon's answer confirms it
+    follower.command = Cli.command(root.periPath, ["look", root.moduleId, "follow", on ? "on" : "off"])
+    follower.running = true
+  }
+
   // Send the look being edited to the mic. The only call here that does.
   function apply() {
     if (!root.canApply || root.moduleId === "") return
@@ -146,6 +155,7 @@ Scope {
     property int deviceBrightness: 0
     property var looks: ({ unmuted: M.emptyLook(), muted: M.emptyLook() })
     property var pending: null      // the newest save waiting for the one in flight: last one wins
+    property bool follow: true
     property var audio: M.emptyAudio()
     property var pendingAudio: ({})   // key -> "key=value", waiting for the one in flight
     property string audioError: ""
@@ -182,6 +192,8 @@ Scope {
     stdout: StdioCollector {
       onStreamFinished: {
         var look = M.parseLook(this.text)
+        var follow = M.parseFollow(this.text)
+        if (follow !== null && !follower.running) state.follow = follow
         if (look !== null && !saver.running && state.pending === null) root.setLook("unmuted", look)
       }
     }
@@ -193,6 +205,26 @@ Scope {
       onStreamFinished: {
         var look = M.parseLook(this.text)
         if (look !== null && !saver.running && state.pending === null) root.setLook("muted", look)
+      }
+    }
+  }
+
+  // `peri look ... follow` answers with the setting as the daemon holds it; a failure puts the shown value back.
+  Process {
+    id: follower
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var follow = M.parseFollow(this.text)
+        if (follow !== null) state.follow = follow
+      }
+    }
+    stderr: StdioCollector {
+      onStreamFinished: state.errText = this.text.trim()
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        state.error = state.errText || "the setting could not be saved"
+        root.refresh()
       }
     }
   }

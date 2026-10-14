@@ -314,4 +314,15 @@ TestCase {
     compare(Mic.withAudio(null, "gain", 5).gain, 5)
     compare(Mic.withAudio(null, "gain", 5).monitorOn, null)
   }
+
+  // The follow setting rides in the look replies.
+  function test_parse_follow() {
+    compare(Mic.parseFollow(lookText("wave", "none", "40") + "follow   yes\n"), true)
+    compare(Mic.parseFollow(lookText("wave", "none", "40") + "follow   no\n"), false)
+    compare(Mic.parseFollow("module m\nfollow yes\n"), true)
+    compare(Mic.parseFollow(lookText("wave", "none", "40")), null)             // no follow line
+    compare(Mic.parseFollow("module m\nfollow maybe\n"), null)
+    compare(Mic.parseFollow(""), null)
+    compare(Mic.parseFollow(undefined), null)
+  }
 }

@@ -221,10 +221,18 @@ Column {
       text: "Apply"
       onClicked: root.peri.apply()
     }
+    // On: the daemon applies the matching look whenever the mic's mute state changes.
+    Button {
+      width: Style.space(170)
+      bordered: true
+      selected: root.peri.follow
+      text: "Follow mute"
+      onClicked: root.peri.setFollow(!root.peri.follow)
+    }
     Caption {
       anchors.verticalCenter: parent.verticalCenter
       visible: root.peri.notice !== ""
-      width: parent.width - Style.space(170) - parent.spacing
+      width: parent.width - Style.space(340) - parent.spacing * 2
       text: root.peri.notice
     }
   }
