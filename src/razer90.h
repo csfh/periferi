@@ -59,3 +59,30 @@ int razer90_decode(const uint8_t frame[RAZER90_LEN], uint8_t cls, uint8_t cmd,
 
 // The buffer to hand to HIDIOCSFEATURE: the report-ID byte 0x00, then the frame.
 void razer90_hidraw(uint8_t buf[RAZER90_HIDRAW_LEN], const uint8_t frame[RAZER90_LEN]);
+
+// What the mouse answers to its read queries. The request and reply layouts are those of the
+// public OpenRazer driver's DeathAdder V3 Pro block (driver/razermouse_driver.c, the case that
+// holds USB id 00c3); only the byte positions are used. None of these has been seen on this
+// mouse until a test vector below the codec says so.
+//
+//   battery   class 07 cmd 80 size 2, no arguments; the level is reply argument 1, raw 0-255
+//   charging  class 07 cmd 84 size 2, no arguments; reply argument 1 (0 or 1)
+//   dpi       class 04 cmd 85 size 7, argument 0 = 00 (the driver's "no store"); x is reply
+//             arguments 1-2 and y is 3-4, big endian
+//   poll rate class 00 cmd 85 size 1, no arguments; reply argument 0: 01 = 1000 Hz, 02 = 500,
+//             08 = 125 (the dongle's faster rates answer with other codes: 0 here, not guessed)
+struct razer90_dpi {
+    uint16_t x, y;
+};
+
+// Each returns false when the reply is too short to hold what is asked for.
+bool razer90_battery_decode(const struct razer90_reply *reply, uint8_t *raw);
+bool razer90_charging_decode(const struct razer90_reply *reply, bool *charging);
+bool razer90_dpi_decode(const struct razer90_reply *reply, struct razer90_dpi *dpi);
+// 0 for a code that is not one of the three above; false when the reply is too short.
+bool razer90_poll_decode(const struct razer90_reply *reply, unsigned *hz);
+
+// The raw battery byte as a percentage, rounded. UNPROVEN: that the byte spans 0-255 is only the
+// doc comment above the public driver's battery attribute ("needs to be scaled from 0-255 ->
+// 0-100", razermouse_driver.c); the driver itself prints the raw byte. Not seen on this mouse.
+unsigned razer90_battery_percent(uint8_t raw);

@@ -110,6 +110,62 @@ int main(void)
     check(buf[0] == 0x00 && memcmp(buf + 1, frame, RAZER90_LEN) == 0 && buf[90] == frame[89],
           "hidraw prefix");
 
+    // The four read requests the CLI sends, as the checksum byte they must carry (frame byte 88,
+    // buffer index 89), worked out by hand: size ^ class ^ command, and no arguments.
+    static const struct { uint8_t cls, cmd, size, crc; } reads[] = {
+        { 0x07, 0x80, 2, 0x85 }, // battery:   02 ^ 07 ^ 80
+        { 0x07, 0x84, 2, 0x81 }, // charging:  02 ^ 07 ^ 84
+        { 0x04, 0x85, 7, 0x86 }, // dpi:       07 ^ 04 ^ 85 (argument 0 is 00)
+        { 0x00, 0x85, 1, 0x84 }, // poll rate: 01 ^ 00 ^ 85
+    };
+    for (size_t i = 0; i < sizeof reads / sizeof *reads; i++) {
+        uint8_t zeros[7] = { 0 };
+        razer90_encode(frame, 0x1f, reads[i].cls, reads[i].cmd, zeros, reads[i].size);
+        check(frame[88] == reads[i].crc && frame[0] == 0 && frame[1] == 0x1f, "read request checksum");
+        razer90_hidraw(buf, frame);
+        check(buf[89] == reads[i].crc && buf[90] == 0, "read request in the hidraw buffer");
+    }
+
+    // The decoders, on replies built by hand: argument bytes only matter by position.
+    struct razer90_reply r = { .status = RAZER_STATUS_OK };
+    uint8_t level;
+    bool charging = true;
+    struct razer90_dpi dpi;
+    unsigned hz;
+
+    r.len = 2;
+    r.args[1] = 0xff;
+    check(razer90_battery_decode(&r, &level) && level == 0xff, "battery is argument 1");
+    check(razer90_battery_percent(0xff) == 100 && razer90_battery_percent(0) == 0
+              && razer90_battery_percent(128) == 50 && razer90_battery_percent(1) == 0,
+          "battery percentage rounds");
+    r.len = 1;
+    check(!razer90_battery_decode(&r, &level), "battery reply too short");
+    r.len = 2;
+    r.args[1] = 0;
+    check(razer90_charging_decode(&r, &charging) && !charging, "not charging");
+    r.args[1] = 1;
+    check(razer90_charging_decode(&r, &charging) && charging, "charging");
+
+    // 800 dpi is 0x0320, 1600 is 0x0640: argument 0 is skipped, x then y, high byte first.
+    r.len = 7;
+    memcpy(r.args, (uint8_t[]){ 0x00, 0x03, 0x20, 0x06, 0x40, 0x00, 0x00 }, 7);
+    check(razer90_dpi_decode(&r, &dpi) && dpi.x == 800 && dpi.y == 1600, "dpi x and y");
+    r.len = 4;
+    check(!razer90_dpi_decode(&r, &dpi), "dpi reply too short");
+
+    r.len = 1;
+    r.args[0] = 0x01;
+    check(razer90_poll_decode(&r, &hz) && hz == 1000, "poll 1000");
+    r.args[0] = 0x02;
+    check(razer90_poll_decode(&r, &hz) && hz == 500, "poll 500");
+    r.args[0] = 0x08;
+    check(razer90_poll_decode(&r, &hz) && hz == 125, "poll 125");
+    r.args[0] = 0x04;
+    check(razer90_poll_decode(&r, &hz) && hz == 0, "unknown poll code is 0, not guessed");
+    r.len = 0;
+    check(!razer90_poll_decode(&r, &hz), "poll reply too short");
+
     if (failures == 0)
         printf("razer90_test: all passed\n");
     return failures ? 1 : 0;

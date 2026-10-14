@@ -76,16 +76,70 @@ int razer90_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8
     return last;
 }
 
+// Send one read and hand back its reply when the device says ok with at least `want` bytes.
+static uint8_t last_status;
+
+uint8_t razer90_last_status(void)
+{
+    return last_status;
+}
+
+static int query(int fd, uint8_t cls, uint8_t cmd, size_t size, const uint8_t *args, size_t want,
+                 struct razer90_reply *reply)
+{
+    uint8_t raw[RAZER90_HIDRAW_LEN];
+    int got;
+    last_status = 0;
+    int rc = razer90_call(fd, cls, cmd, size, args, reply, raw, &got);
+    if (rc < 0)
+        return rc;
+    last_status = reply->status;
+    return reply->status == RAZER_STATUS_OK && reply->len >= want ? 0 : RAZER_ERR_STATUS;
+}
+
 int razer90_firmware(int fd, uint8_t version[2])
 {
     struct razer90_reply reply;
-    uint8_t raw[RAZER90_HIDRAW_LEN];
-    int got;
-    int rc = razer90_call(fd, 0x00, 0x81, 2, nullptr, &reply, raw, &got);
-    if (rc < 0)
-        return rc;
-    if (reply.status != RAZER_STATUS_OK || reply.len < 2)
-        return RAZER_ERR_STATUS;
-    memcpy(version, reply.args, 2);
-    return 0;
+    int rc = query(fd, 0x00, 0x81, 2, nullptr, 2, &reply);
+    if (rc == 0)
+        memcpy(version, reply.args, 2);
+    return rc;
+}
+
+int razer90_battery(int fd, uint8_t *raw)
+{
+    struct razer90_reply reply;
+    int rc = query(fd, 0x07, 0x80, 2, nullptr, 2, &reply);
+    if (rc == 0 && !razer90_battery_decode(&reply, raw))
+        rc = RAZER_ERR_STATUS;
+    return rc;
+}
+
+int razer90_charging(int fd, bool *charging)
+{
+    struct razer90_reply reply;
+    int rc = query(fd, 0x07, 0x84, 2, nullptr, 2, &reply);
+    if (rc == 0 && !razer90_charging_decode(&reply, charging))
+        rc = RAZER_ERR_STATUS;
+    return rc;
+}
+
+// Argument 0 is 00: the "no store" byte the public driver uses to read the V3 Pro's DPI.
+int razer90_dpi(int fd, struct razer90_dpi *dpi)
+{
+    const uint8_t args[7] = { 0x00 };
+    struct razer90_reply reply;
+    int rc = query(fd, 0x04, 0x85, 7, args, 5, &reply);
+    if (rc == 0 && !razer90_dpi_decode(&reply, dpi))
+        rc = RAZER_ERR_STATUS;
+    return rc;
+}
+
+int razer90_poll_rate(int fd, unsigned *hz)
+{
+    struct razer90_reply reply;
+    int rc = query(fd, 0x00, 0x85, 1, nullptr, 1, &reply);
+    if (rc == 0 && !razer90_poll_decode(&reply, hz))
+        rc = RAZER_ERR_STATUS;
+    return rc;
 }

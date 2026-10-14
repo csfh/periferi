@@ -658,16 +658,49 @@ static int cmd_razer(const char *arg, const char *query)
     return reply.status == RAZER_STATUS_OK ? 0 : 1;
 }
 
-// The one query `peri razer90` may send to the DeathAdder: firmware get (class 0x00, command
-// 0x81, size 2), a read. Nothing that sets a mode, a DPI or lighting is on it.
-// Prints the raw bytes first, so a reply that does not decode can be told from a wrong frame.
+// The queries `peri razer90` may send to the DeathAdder: reads only (firmware, battery, charging,
+// DPI, poll rate). Nothing that sets a mode, a DPI, a poll rate or lighting is on it. `args` is
+// at least `size` long. Prints the raw bytes first, so a reply that does not decode can be told
+// from a wrong frame.
+static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[7]; } razer90_queries[] = {
+    { "firmware", 0x00, 0x81, 2, { 0 } },
+    { "battery", 0x07, 0x80, 2, { 0 } },
+    { "charging", 0x07, 0x84, 2, { 0 } },
+    { "dpi", 0x04, 0x85, 7, { 0 } },
+    { "poll-rate", 0x00, 0x85, 1, { 0 } },
+};
+
+static void print_razer90_meaning(const char *query, const struct razer90_reply *reply)
+{
+    uint8_t level;
+    bool charging;
+    struct razer90_dpi dpi;
+    unsigned hz;
+    if (!strcmp(query, "battery") && razer90_battery_decode(reply, &level))
+        printf("battery raw %u (%u%% if the byte spans 0-255, unproven)\n", level, razer90_battery_percent(level));
+    else if (!strcmp(query, "charging") && razer90_charging_decode(reply, &charging))
+        printf("charging %s\n", charging ? "yes" : "no");
+    else if (!strcmp(query, "dpi") && razer90_dpi_decode(reply, &dpi))
+        printf("dpi %u:%u\n", dpi.x, dpi.y);
+    else if (!strcmp(query, "poll-rate") && razer90_poll_decode(reply, &hz)) {
+        if (hz)
+            printf("poll-rate %u Hz\n", hz);
+        else // a code this program does not know (the dongle's faster rates use other codes)
+            printf("poll-rate unknown code 0x%02x\n", reply->args[0]);
+    }
+}
+
 static int cmd_razer90(const char *arg, const char *query)
 {
     const char *name = node_name(arg);
     if (!name)
         return 2;
-    if (strcmp(query, "firmware")) {
-        fprintf(stderr, "peri: unknown razer90 query '%s' (known: firmware)\n", query);
+    size_t q = 0;
+    while (q < sizeof razer90_queries / sizeof *razer90_queries && strcmp(razer90_queries[q].name, query))
+        q++;
+    if (q == sizeof razer90_queries / sizeof *razer90_queries) {
+        fprintf(stderr, "peri: unknown razer90 query '%s' (known: firmware, battery, charging, dpi, poll-rate)\n",
+                query);
         return 2;
     }
     if (!node_allowed(name, false))
@@ -679,7 +712,8 @@ static int cmd_razer90(const char *arg, const char *query)
     struct razer90_reply reply;
     uint8_t raw[RAZER90_HIDRAW_LEN];
     int got;
-    int rc = razer90_call(fd, 0x00, 0x81, 2, nullptr, &reply, raw, &got);
+    int rc = razer90_call(fd, razer90_queries[q].cls, razer90_queries[q].cmd, razer90_queries[q].size,
+                          razer90_queries[q].args, &reply, raw, &got);
     close(fd);
 
     if (got > 0) {
@@ -698,6 +732,8 @@ static int cmd_razer90(const char *arg, const char *query)
     for (size_t i = 0; i < reply.len; i++)
         printf(" %02x", reply.args[i]);
     putchar('\n');
+    if (reply.status == RAZER_STATUS_OK)
+        print_razer90_meaning(query, &reply);
     return reply.status == RAZER_STATUS_OK ? 0 : 1;
 }
 
@@ -1191,6 +1227,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|razer90 <node> firmware|xap <node> <route-hex>|blob <node>|status <module-id>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }

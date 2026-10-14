@@ -52,3 +52,53 @@ void razer90_hidraw(uint8_t buf[RAZER90_HIDRAW_LEN], const uint8_t frame[RAZER90
     buf[0] = 0x00;
     memcpy(buf + 1, frame, RAZER90_LEN);
 }
+
+bool razer90_battery_decode(const struct razer90_reply *reply, uint8_t *raw)
+{
+    if (reply->len < 2)
+        return false;
+    *raw = reply->args[1];
+    return true;
+}
+
+bool razer90_charging_decode(const struct razer90_reply *reply, bool *charging)
+{
+    if (reply->len < 2)
+        return false;
+    *charging = reply->args[1] != 0;
+    return true;
+}
+
+bool razer90_dpi_decode(const struct razer90_reply *reply, struct razer90_dpi *dpi)
+{
+    if (reply->len < 5)
+        return false;
+    dpi->x = (uint16_t)(reply->args[1] << 8 | reply->args[2]);
+    dpi->y = (uint16_t)(reply->args[3] << 8 | reply->args[4]);
+    return true;
+}
+
+bool razer90_poll_decode(const struct razer90_reply *reply, unsigned *hz)
+{
+    if (reply->len < 1)
+        return false;
+    switch (reply->args[0]) {
+    case 0x01:
+        *hz = 1000;
+        break;
+    case 0x02:
+        *hz = 500;
+        break;
+    case 0x08:
+        *hz = 125;
+        break;
+    default:
+        *hz = 0;
+    }
+    return true;
+}
+
+unsigned razer90_battery_percent(uint8_t raw)
+{
+    return ((unsigned)raw * 100 + 127) / 255;
+}
