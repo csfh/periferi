@@ -19,7 +19,9 @@
 //   effect = "breathing"
 //
 // A look is the user's saved SETTINGS, not what the device is showing: saving one never touches
-// the device, and applying it is a separate, deliberate step. Any field may be missing.
+// the device, and applying it is a separate step: by the Apply button, or by the daemon when the
+// mic's mute state changes and `follow_mute` is on (the default). Any field may be missing. A
+// `follow_mute = false` line at the top of the file turns the following off.
 
 enum peri_look_which { PERI_LOOK_UNMUTED, PERI_LOOK_MUTED };
 
@@ -45,6 +47,12 @@ const char *peri_look_which_name(enum peri_look_which which);
 // colour is dropped unless the effect takes two and a first colour is there. A speed is kept only
 // for the wave effects, and must be "slow" or "fast".
 bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look);
+
+// Whether the daemon applies the matching look when the mic's mute state changes (see follow.h).
+// On by default: only a file that says `follow_mute = false` turns it off. Saving a look never
+// changes it. peri_look_set_follow() returns false for an invalid module id or on a write error.
+bool peri_look_follow(const char *module_id);
+bool peri_look_set_follow(const char *module_id, bool on);
 
 // A saved look, or an empty one when there is none, the file cannot be read, or what is in it is
 // not something this program would have written. A file in an older format loads as empty. Never

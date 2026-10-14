@@ -98,10 +98,13 @@ static bool look_path(const char *module_id, char *dir, size_t dir_size, char *p
            && snprintf(path, size, "%s/%s.toml", dir, module_id) < (int)size;
 }
 
-// Read both looks from the file; anything missing or invalid is an empty look.
-static void load_both(const char *module_id, struct peri_look looks[2])
+// Read both looks, and the follow flag if `follow` is not null, from the file; anything missing
+// or invalid is an empty look, and the flag is on unless the file says `follow_mute = false`.
+static void load_both(const char *module_id, struct peri_look looks[2], bool *follow)
 {
     looks[0] = looks[1] = PERI_LOOK_EMPTY;
+    if (follow)
+        *follow = true;
     char dir[PATH_MAX], path[PATH_MAX];
     if (!look_path(module_id, dir, sizeof dir, path, sizeof path))
         return;
@@ -119,6 +122,9 @@ static void load_both(const char *module_id, struct peri_look looks[2])
 
     toml_result_t result = toml_parse(text, (int)n);
     if (result.ok) {
+        toml_datum_t flag = toml_seek(result.toptab, "follow_mute");
+        if (follow && flag.type == TOML_BOOLEAN && !flag.u.boolean)
+            *follow = false;
         for (int i = 0; i < 2; i++) {
             char key[48];
             struct peri_look raw = PERI_LOOK_EMPTY;
@@ -164,7 +170,7 @@ static void load_both(const char *module_id, struct peri_look looks[2])
 struct peri_look peri_look_load(const char *module_id, enum peri_look_which which)
 {
     struct peri_look looks[2];
-    load_both(module_id, looks);
+    load_both(module_id, looks, nullptr);
     return looks[which == PERI_LOOK_MUTED ? 1 : 0];
 }
 
@@ -186,20 +192,19 @@ static int append_look(char *buf, size_t size, enum peri_look_which which, const
     return n + snprintf(buf + n, size - (size_t)n, "\n");
 }
 
-bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look)
+// Write both looks and the flag as one file, atomically (temp file, then rename).
+static bool write_state(const char *module_id, const struct peri_look looks[2], bool follow)
 {
-    struct peri_look mine;
     char dir[PATH_MAX], path[PATH_MAX], tmp[PATH_MAX];
-    if (!look || !look_path(module_id, dir, sizeof dir, path, sizeof path) || !clean(look, &mine)
+    if (!look_path(module_id, dir, sizeof dir, path, sizeof path)
         || snprintf(tmp, sizeof tmp, "%s/.%s.toml.tmp", dir, module_id) >= (int)sizeof tmp)
         return false;
 
-    struct peri_look looks[2];
-    load_both(module_id, looks); // keep the other look as it is
-    looks[which == PERI_LOOK_MUTED ? 1 : 0] = mine;
-
-    char text[512];
-    int len = append_look(text, sizeof text, PERI_LOOK_UNMUTED, &looks[0]);
+    char text[768];
+    int len = 0;
+    if (!follow) // the flag is written only when it is off: the default is on
+        len = snprintf(text, sizeof text, "follow_mute = false\n\n");
+    len += append_look(text + len, sizeof text - (size_t)len, PERI_LOOK_UNMUTED, &looks[0]);
     len += append_look(text + len, sizeof text - (size_t)len, PERI_LOOK_MUTED, &looks[1]);
     if (len >= (int)sizeof text || !peri_mkdir_p(dir))
         return false;
@@ -214,4 +219,37 @@ bool peri_look_save(const char *module_id, enum peri_look_which which, const str
         return false;
     }
     return true;
+}
+
+bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look)
+{
+    struct peri_look mine;
+    char dir[PATH_MAX], path[PATH_MAX];
+    if (!look || !look_path(module_id, dir, sizeof dir, path, sizeof path) || !clean(look, &mine))
+        return false;
+
+    struct peri_look looks[2];
+    bool follow;
+    load_both(module_id, looks, &follow); // keep the other look and the flag as they are
+    looks[which == PERI_LOOK_MUTED ? 1 : 0] = mine;
+    return write_state(module_id, looks, follow);
+}
+
+bool peri_look_follow(const char *module_id)
+{
+    struct peri_look looks[2];
+    bool follow;
+    load_both(module_id, looks, &follow);
+    return follow;
+}
+
+bool peri_look_set_follow(const char *module_id, bool on)
+{
+    char dir[PATH_MAX], path[PATH_MAX];
+    if (!look_path(module_id, dir, sizeof dir, path, sizeof path))
+        return false;
+    struct peri_look looks[2];
+    bool follow;
+    load_both(module_id, looks, &follow);
+    return write_state(module_id, looks, on);
 }
