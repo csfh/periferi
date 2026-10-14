@@ -30,7 +30,7 @@ Column {
   Timer {
     interval: 1
     running: root.active && root.visible && root.moduleId !== ""
-    onTriggered: root.peri.refresh()
+    onTriggered: root.peri.refresh("the pane opened")
   }
 
   component Caption: Text {
@@ -312,5 +312,14 @@ Column {
     color: Color.urgent
     font.family: Style.font.family
     font.pixelSize: Style.font.caption
+  }
+
+  // Writes an annotated log of what this pane does to a text file (the path shows on hover).
+  Button {
+    bordered: true
+    selected: root.peri.debug
+    text: "Debug log"
+    tooltipText: root.peri.debugPath
+    onClicked: root.peri.setDebug(!root.peri.debug)
   }
 }
