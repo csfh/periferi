@@ -47,7 +47,7 @@ For the panel, `just plugin` installs it as an Omarchy shell widget; `omarchy re
 ## Develop and test
 
 ```
-just test       # build and run the unit tests (no hardware needed)
+just test       # build and run the unit tests and the headless pane scenarios (no hardware needed)
 just qml-check  # lint the Quickshell side
 just dev        # rebuild, install and restart the service on every change
 ```

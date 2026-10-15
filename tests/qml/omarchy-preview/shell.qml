@@ -80,7 +80,7 @@ ShellRoot {
 
   // PERI_PREVIEW_DEBUG=1: switch the debug log on and press a sequence of controls, to see what the log
   // says. The sequence CHANGES SAVED LOOKS and the Follow mute setting, so it runs only if both
-  // PERI_PREVIEW_PERI (a peri that talks to a throwaway daemon with its own config directory) and
+  // PERI_PREVIEW_PERI (a peri that talks to a throwaway daemon with its own runtime, config AND data directories: installed modules live in the data directory) and
   // PERI_PREVIEW_ISOLATED=1 are set; otherwise it does nothing. Its Apply step is guarded so it
   // can only ever be the "nothing to send" refusal: it is never allowed to reach the microphone.
   Timer {

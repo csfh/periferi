@@ -30,7 +30,8 @@ dev:
 
 # Build and run the unit tests (no hardware needed).
 test: build
-    ctest --test-dir build --output-on-failure
+    # -j4: the headless pane scenarios (about 20 s each) run side by side. `ctest --test-dir build -LE scenario` skips them.
+    ctest --test-dir build --output-on-failure -j4
 
 # Check the Quickshell side without installing anything.
 qml-check:
