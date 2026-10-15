@@ -12,13 +12,44 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-// Reads only. A control SET joins this list in its own commit, with the first approved write.
+// Queries and reads, and the one control write. Never the extended write (VIDIOC_S_EXT_CTRLS: it takes
+// several controls and compound payloads), and nothing that streams, sets a format or moves buffers.
 static const unsigned long allowed[] = {
     VIDIOC_QUERYCAP,
     VIDIOC_QUERY_EXT_CTRL,
     VIDIOC_QUERYMENU,
     VIDIOC_G_CTRL,
+    VIDIOC_S_CTRL,
 };
+
+// The standard controls that may be written: each one the BRIO lists that a person would change.
+static const uint32_t settable[] = {
+    V4L2_CID_BRIGHTNESS,
+    V4L2_CID_CONTRAST,
+    V4L2_CID_SATURATION,
+    V4L2_CID_AUTO_WHITE_BALANCE,
+    V4L2_CID_GAIN,
+    V4L2_CID_POWER_LINE_FREQUENCY,
+    V4L2_CID_WHITE_BALANCE_TEMPERATURE,
+    V4L2_CID_SHARPNESS,
+    V4L2_CID_BACKLIGHT_COMPENSATION,
+    V4L2_CID_EXPOSURE_AUTO,
+    V4L2_CID_EXPOSURE_ABSOLUTE,
+    V4L2_CID_EXPOSURE_AUTO_PRIORITY,
+    V4L2_CID_PAN_ABSOLUTE,
+    V4L2_CID_TILT_ABSOLUTE,
+    V4L2_CID_FOCUS_ABSOLUTE,
+    V4L2_CID_FOCUS_AUTO,
+    V4L2_CID_ZOOM_ABSOLUTE,
+};
+
+bool peri_cam_settable_id(uint32_t id)
+{
+    for (size_t i = 0; i < sizeof settable / sizeof *settable; i++)
+        if (settable[i] == id)
+            return true;
+    return false;
+}
 
 bool peri_cam_ioctl_allowed(unsigned long request)
 {
@@ -30,7 +61,8 @@ bool peri_cam_ioctl_allowed(unsigned long request)
 
 int peri_cam_ioctl(int fd, unsigned long request, void *arg)
 {
-    if (!peri_cam_ioctl_allowed(request)) {
+    if (!peri_cam_ioctl_allowed(request)
+        || (request == VIDIOC_S_CTRL && !peri_cam_settable_id(((struct v4l2_control *)arg)->id))) {
         errno = EPERM;
         return -1;
     }
@@ -202,4 +234,60 @@ bool peri_cam_status_text(const struct peri_cam_ctrl *ctrls, size_t count, char 
         used += (size_t)n;
     }
     return true;
+}
+
+bool peri_cam_check_value(const struct peri_cam_ctrl *c, int64_t value, char *why, size_t size)
+{
+    if (!peri_cam_settable_id(c->id)) {
+        snprintf(why, size, "%s is not a control this program sets", c->name);
+        return false;
+    }
+    if (c->flags & V4L2_CTRL_FLAG_READ_ONLY) {
+        snprintf(why, size, "%s is read-only", c->name);
+        return false;
+    }
+    if (peri_cam_inactive(c)) {
+        snprintf(why, size, "%s is inactive right now (another control, such as an automatic mode, holds it)", c->name);
+        return false;
+    }
+    if (c->type == V4L2_CTRL_TYPE_BOOLEAN && value != 0 && value != 1) {
+        snprintf(why, size, "%s takes 0 or 1", c->name);
+        return false;
+    }
+    if (value < c->min || value > c->max) {
+        snprintf(why, size, "%s must be from %lld to %lld", c->name, (long long)c->min, (long long)c->max);
+        return false;
+    }
+    if (c->type == V4L2_CTRL_TYPE_INTEGER && c->step > 1 && (value - c->min) % c->step != 0) {
+        snprintf(why, size, "%s moves in steps of %lld from %lld", c->name, (long long)c->step, (long long)c->min);
+        return false;
+    }
+    return true;
+}
+
+const struct peri_cam_ctrl *peri_cam_find(const struct peri_cam_ctrl *ctrls, size_t count, const char *name)
+{
+    for (size_t i = 0; i < count; i++)
+        if (strcmp(ctrls[i].name, name) == 0)
+            return &ctrls[i];
+    return nullptr;
+}
+
+int peri_cam_set(int fd, const struct peri_cam_ctrl *c, int64_t value, int64_t *readback)
+{
+    if (c->type == V4L2_CTRL_TYPE_MENU) { // a menu can have holes: the camera says which indices exist
+        struct v4l2_querymenu m = { .id = c->id, .index = (uint32_t)value };
+        if (peri_cam_ioctl(fd, VIDIOC_QUERYMENU, &m) != 0) {
+            errno = EINVAL;
+            return -1;
+        }
+    }
+    struct v4l2_control w = { .id = c->id, .value = (int32_t)value };
+    if (peri_cam_ioctl(fd, VIDIOC_S_CTRL, &w) != 0)
+        return -1;
+    struct v4l2_control r = { .id = c->id };
+    if (peri_cam_ioctl(fd, VIDIOC_G_CTRL, &r) != 0)
+        return -1;
+    *readback = r.value;
+    return 0;
 }

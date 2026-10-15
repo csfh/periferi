@@ -1,3 +1,4 @@
+#include <errno.h>
 #include <linux/videodev2.h>
 #include <stdio.h>
 #include <string.h>
@@ -35,8 +36,8 @@ int main(void)
     peri_cam_short_name("Brightness", tiny, sizeof tiny);
     check(strcmp(tiny, "brigh") == 0, "a short buffer is cut, never overrun");
 
-    // The engine may query and read controls and nothing else: no streaming, no formats, no buffers,
-    // and no control writes yet.
+    // The engine may query and read controls and write one control: no streaming, no formats, no
+    // buffers, no extended (multi-control) writes.
     check(peri_cam_ioctl_allowed(VIDIOC_QUERYCAP), "querycap allowed");
     check(peri_cam_ioctl_allowed(VIDIOC_QUERY_EXT_CTRL), "query ext ctrl allowed");
     check(peri_cam_ioctl_allowed(VIDIOC_QUERYMENU), "querymenu allowed");
@@ -48,9 +49,27 @@ int main(void)
     check(!peri_cam_ioctl_allowed(VIDIOC_DQBUF), "dqbuf refused");
     check(!peri_cam_ioctl_allowed(VIDIOC_S_FMT), "set format refused");
     check(!peri_cam_ioctl_allowed(VIDIOC_S_PARM), "set parameters refused");
-    check(!peri_cam_ioctl_allowed(VIDIOC_S_CTRL), "control write not enabled yet");
-    check(!peri_cam_ioctl_allowed(VIDIOC_S_EXT_CTRLS), "extended control write not enabled yet");
-    check(peri_cam_ioctl(-1, VIDIOC_STREAMON, nullptr) == -1, "a refused ioctl returns -1");
+    check(peri_cam_ioctl_allowed(VIDIOC_S_CTRL), "single control write allowed");
+    check(!peri_cam_ioctl_allowed(VIDIOC_S_EXT_CTRLS), "extended control write refused");
+    check(!peri_cam_ioctl_allowed(VIDIOC_G_EXT_CTRLS), "extended control read is not needed");
+    check(peri_cam_ioctl(-1, VIDIOC_STREAMON, nullptr) == -1 && errno == EPERM, "a refused ioctl is EPERM");
+
+    // A control write is limited to the standard controls on the fixed list: a vendor control that a
+    // driver maps into V4L2 under its own id (here a private-base id) can never be written through
+    // peri_cam_ioctl(), whatever the caller passes. A listed id gets as far as the (closed) fd.
+    check(peri_cam_settable_id(V4L2_CID_BRIGHTNESS) && peri_cam_settable_id(V4L2_CID_ZOOM_ABSOLUTE)
+              && peri_cam_settable_id(V4L2_CID_EXPOSURE_AUTO_PRIORITY),
+          "standard controls are settable");
+    check(!peri_cam_settable_id(V4L2_CID_PRIVATE_BASE) && !peri_cam_settable_id(V4L2_CID_PRIVATE_BASE + 1)
+              && !peri_cam_settable_id(V4L2_CID_PAN_RELATIVE) && !peri_cam_settable_id(0)
+              && !peri_cam_settable_id(V4L2_CID_HUE) && !peri_cam_settable_id(V4L2_CID_GAMMA),
+          "anything else is not settable");
+    struct v4l2_control vendor = { .id = V4L2_CID_PRIVATE_BASE + 5, .value = 1 };
+    errno = 0;
+    check(peri_cam_ioctl(-1, VIDIOC_S_CTRL, &vendor) == -1 && errno == EPERM, "a non-standard control write is refused");
+    struct v4l2_control standard = { .id = V4L2_CID_BRIGHTNESS, .value = 128 };
+    errno = 0;
+    check(peri_cam_ioctl(-1, VIDIOC_S_CTRL, &standard) == -1 && errno == EBADF, "a standard control write reaches the fd");
 
     // The main camera is the capture node with the lowest index (the BRIO: colour 0, infrared 2,
     // metadata nodes 1 and 3).
@@ -63,6 +82,38 @@ int main(void)
     const bool none[] = { false, false };
     check(peri_cam_pick(idx2, none, 2) == -1, "no capture node");
     check(peri_cam_pick(idx2, none, 0) == -1, "no candidates");
+
+    // What may be written, checked against the BRIO's real ranges (read 2026-10-15).
+    struct peri_cam_ctrl brightness = { .id = V4L2_CID_BRIGHTNESS, .name = "brightness", .type = V4L2_CTRL_TYPE_INTEGER,
+                                        .min = 0, .max = 255, .step = 1, .def = 128, .value = 128 };
+    struct peri_cam_ctrl pan = { .id = V4L2_CID_PAN_ABSOLUTE, .name = "pan_absolute", .type = V4L2_CTRL_TYPE_INTEGER,
+                                 .min = -36000, .max = 36000, .step = 3600, .value = 10800 };
+    struct peri_cam_ctrl autowb = { .id = V4L2_CID_AUTO_WHITE_BALANCE, .name = "white_balance_automatic",
+                                    .type = V4L2_CTRL_TYPE_BOOLEAN, .min = 0, .max = 1, .step = 1, .value = 1 };
+    struct peri_cam_ctrl exposure = { .id = V4L2_CID_EXPOSURE_ABSOLUTE, .name = "exposure_time_absolute",
+                                      .type = V4L2_CTRL_TYPE_INTEGER, .min = 3, .max = 2047, .step = 1,
+                                      .flags = V4L2_CTRL_FLAG_INACTIVE };
+    struct peri_cam_ctrl odd = { .id = V4L2_CID_PRIVATE_BASE + 2, .name = "vendor_thing", .type = V4L2_CTRL_TYPE_INTEGER,
+                                 .min = 0, .max = 9, .step = 1 };
+    struct peri_cam_ctrl locked = brightness;
+    locked.flags = V4L2_CTRL_FLAG_READ_ONLY;
+    char why[160];
+    check(peri_cam_check_value(&brightness, 0, why, sizeof why) && peri_cam_check_value(&brightness, 255, why, sizeof why),
+          "range ends are fine");
+    check(!peri_cam_check_value(&brightness, 256, why, sizeof why) && strstr(why, "0 to 255"), "above the range");
+    check(!peri_cam_check_value(&brightness, -1, why, sizeof why), "below the range");
+    check(peri_cam_check_value(&pan, 7200, why, sizeof why) && peri_cam_check_value(&pan, -36000, why, sizeof why),
+          "a value on the step");
+    check(!peri_cam_check_value(&pan, 7000, why, sizeof why) && strstr(why, "3600"), "a value off the step is refused");
+    check(peri_cam_check_value(&autowb, 0, why, sizeof why) && !peri_cam_check_value(&autowb, 2, why, sizeof why),
+          "a boolean takes 0 or 1");
+    check(!peri_cam_check_value(&exposure, 250, why, sizeof why) && strstr(why, "inactive"), "an inactive control is refused");
+    check(!peri_cam_check_value(&odd, 1, why, sizeof why) && strstr(why, "not a control this program sets"),
+          "a control off the list is refused");
+    check(!peri_cam_check_value(&locked, 100, why, sizeof why) && strstr(why, "read-only"), "a read-only control is refused");
+    const struct peri_cam_ctrl list[] = { brightness, pan };
+    check(peri_cam_find(list, 2, "pan_absolute") == &list[1] && peri_cam_find(list, 2, "zoom_absolute") == nullptr,
+          "find by name");
 
     // The status line, and that it refuses to cut a pair in half.
     struct peri_cam_ctrl c[2] = { { .name = "brightness", .value = 128 }, { .name = "pan_absolute", .value = -3600 } };

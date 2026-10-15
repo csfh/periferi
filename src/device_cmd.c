@@ -4,6 +4,7 @@
 #include "device_cmd.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -281,6 +282,71 @@ static bool installed_engine_is(const char *id, const char *engine)
     return false;
 }
 
+// `set <module-id> <control>=<value>` for a camera: one standard control per request, named as `peri
+// status` shows it. The control must be on the settable list, not read-only or inactive, and the value in
+// range and on the control's step; the value now is read first and reported as "before", the value to put
+// back. The camera's ok proves nothing about the effect, so the value is read back and reported as it says.
+// Camera settings may be kept by the camera (the BRIO keeps its pan), so every set may be a stored write.
+static void set_camera(const char *id, char *rest, char *reply, size_t size)
+{
+    static const char usage[] = "err usage: set <module-id> <control>=<value> (names as in `peri status <module-id>`)\n";
+    const char *tok = strtok_r(nullptr, " \n", &rest);
+    if (!tok || strtok_r(nullptr, " \n", &rest)) {
+        snprintf(reply, size, "%s", usage);
+        return;
+    }
+    const char *eq = strchr(tok, '=');
+    char name[40];
+    if (!eq || eq == tok || (size_t)(eq - tok) >= sizeof name || eq[1] == '\0') {
+        snprintf(reply, size, "%s", usage);
+        return;
+    }
+    snprintf(name, sizeof name, "%.*s", (int)(eq - tok), tok);
+    char *end;
+    long long value = strtoll(eq + 1, &end, 10);
+    if (*end != '\0') {
+        err(reply, size, "the value must be a whole number", id);
+        return;
+    }
+
+    char node[32];
+    struct peri_module m;
+    if (!resolve_module(id, &m, node, sizeof node, reply, size))
+        return;
+    int fd = peri_cam_open(node);
+    if (fd < 0) {
+        err(reply, size, "cannot open the camera (see `journalctl --user -u perid`)", id);
+        return;
+    }
+    struct peri_cam_ctrl ctrls[64];
+    size_t count = peri_cam_list(fd, ctrls, 64);
+    const struct peri_cam_ctrl *c = peri_cam_find(ctrls, count, name);
+    char why[160];
+    if (!c) {
+        close(fd);
+        err(reply, size, "no such control (names are in `peri status`)", id);
+        return;
+    }
+    if (!peri_cam_check_value(c, value, why, sizeof why)) {
+        close(fd);
+        err(reply, size, why, id);
+        return;
+    }
+    long long before = c->value;
+    int64_t after = 0;
+    int rc = peri_cam_set(fd, c, value, &after);
+    int saved_errno = errno;
+    close(fd);
+    if (rc != 0) {
+        char text[200];
+        snprintf(text, sizeof text, "the camera did not accept the change: %s", strerror(saved_errno));
+        err(reply, size, text, id);
+        return;
+    }
+    snprintf(reply, size, "ok module=%s sent=%s:%lld before=%lld device=ok readback=%lld stored=maybe\n", m.id,
+             name, value, before, (long long)after);
+}
+
 // `set <module-id> dpi=<n>` or `poll=<125|500|1000>` for the DeathAdder: one setting per request.
 // The current value is read first and reported as "before", the value to put back, and no write
 // is made without it. The DPI set may be kept in the mouse's own memory (razer90.h). The device's
@@ -388,6 +454,10 @@ void set_handle(const char *args, char *reply, size_t size)
 
     if (installed_engine_is(id, "razer90")) {
         set_razer90(id, rest, reply, size);
+        return;
+    }
+    if (installed_engine_is(id, "v4l2")) {
+        set_camera(id, rest, reply, size);
         return;
     }
 

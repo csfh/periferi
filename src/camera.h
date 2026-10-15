@@ -10,10 +10,18 @@
 // capturing, to set a format or to hand over a frame (a test checks the list). Nothing here reads
 // or writes video data.
 
-// Is this ioctl one the engine may issue? Control queries and reads only for now.
+// Is this ioctl one the engine may issue? Control queries and reads, and VIDIOC_S_CTRL (one control
+// write), which peri_cam_ioctl() further limits to the standard controls in peri_cam_settable_id().
 bool peri_cam_ioctl_allowed(unsigned long request);
 
-// ioctl(2) on a video node, or -1 with errno EPERM when the request is not allowed.
+// Is this one of the standard V4L2 controls the engine may WRITE (brightness, exposure, focus, zoom,
+// pan and tilt ...)? A fixed list, not "anything in the user or camera class": a driver can map a
+// vendor extension-unit control into V4L2 under its own id, and a generic set must never reach one
+// (the BRIO's field of view, firmware and factory-reset functions live there).
+bool peri_cam_settable_id(uint32_t id);
+
+// ioctl(2) on a video node, or -1 with errno EPERM when the request is not allowed, or is a control
+// write to an id that is not settable.
 int peri_cam_ioctl(int fd, unsigned long request, void *arg);
 
 // "Exposure Time, Absolute" -> "exposure_time_absolute": lower case, every run of other characters
@@ -33,6 +41,19 @@ struct peri_cam_ctrl {
 // True when the camera says the control cannot be set right now (exposure time while exposure is
 // automatic, white-balance temperature while it is automatic, focus while autofocus is on).
 bool peri_cam_inactive(const struct peri_cam_ctrl *c);
+
+// May `value` be written to this control right now? False, with a short reason in `why`, when the id
+// is not settable, the control is read-only or inactive, or the value is out of range, off the step
+// or not a boolean 0/1. (A menu's holes are checked against the camera by peri_cam_set().)
+bool peri_cam_check_value(const struct peri_cam_ctrl *c, int64_t value, char *why, size_t size);
+
+// The control with this short name, or null.
+const struct peri_cam_ctrl *peri_cam_find(const struct peri_cam_ctrl *ctrls, size_t count, const char *name);
+
+// Write one control of the open camera and read it back. 0 when the camera accepted it; the value it
+// reports now is in `readback` (it may differ: a driver can round or ignore). -1 and errno otherwise.
+// A menu index the camera does not offer is refused before anything is written.
+int peri_cam_set(int fd, const struct peri_cam_ctrl *c, int64_t value, int64_t *readback);
 
 // Which of a device's video nodes is its main camera: the capture node with the lowest index. The
 // BRIO's colour camera is index 0 and its infrared camera index 2, and both show the same user
