@@ -4,9 +4,9 @@
 # The camera's controls are on its video nodes, not on HID. The match below names the BRIO's one HID
 # interface (consumer control, 000c:0001) only to IDENTIFY the device; the daemon then finds that
 # USB device's capture node through sysfs, so no /dev/video number appears here. The engine sends
-# control queries, control reads, single writes of a fixed list of standard V4L2 controls, and GET reads
-# of one Logitech extension-unit selector (the field of view); it never writes a vendor extension-unit
-# control, never starts streaming and never reads a frame. The system
+# control queries, control reads, single writes of a fixed list of standard V4L2 controls, and reads
+# and one-byte writes of that one selector (the field of view, values 0 to 2); it never writes any other
+# vendor extension-unit control, never starts streaming and never reads a frame. The system
 # already grants the logged-in user the video nodes, so no udev rule is installed for it.
 #
 # No capabilities: nothing here is lighting.

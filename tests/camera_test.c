@@ -181,7 +181,7 @@ int main(void)
     c[0].flags = V4L2_CTRL_FLAG_INACTIVE;
     check(peri_cam_inactive(&c[0]) && !peri_cam_inactive(&c[1]), "inactive flag");
 
-    // ---- the field-of-view extension unit: found by GUID in the descriptor, read only ----------------
+    // ---- the field-of-view extension unit: found by GUID in the descriptor, reads and one narrow write --
     uint8_t blob[512];
     size_t blen = build_descriptor(blob, 0xba, true);
     uint8_t unit = 0;
@@ -233,9 +233,43 @@ int main(void)
     }
     // Everything else is refused before the fd is touched.
     q.unit = 10; q.selector = 5; q.size = 1; q.data = buf;
-    q.query = 0x01; // SET_CUR: a write
+    // The one write, SET_CUR (0x01): a single byte from 0 to the camera's own max (2) reaches the fd...
+    for (uint8_t v = 0; v <= PERI_CAM_FOV_MAX; v++) {
+        buf[0] = v;
+        q.query = PERI_UVC_SET_CUR;
+        errno = 0;
+        check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EBADF, "an in-range write reaches the fd");
+    }
+    // ...and nothing else does: a value past the max, two bytes, no buffer.
+    buf[0] = PERI_CAM_FOV_MAX + 1;
     errno = 0;
-    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "SET_CUR is refused");
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a value past the max is refused");
+    buf[0] = 255;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "255 is refused");
+    buf[0] = 1;
+    q.size = 2;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a two-byte write is refused");
+    q.size = 1;
+    q.selector = 4;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a write to another selector is refused");
+    q.selector = 5; q.unit = 14;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a write to another unit is refused");
+    q.unit = 10; q.data = nullptr;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a write with no buffer is refused");
+    q.data = buf;
+    errno = 0;
+    check(peri_cam_fov_write(-1, PERI_CAM_FOV_MAX + 1, buf) == -1 && errno == EPERM, "peri_cam_fov_write refuses a value past the max");
+    errno = 0;
+    check(peri_cam_fov_write(-1, 1, buf) == -1 && errno == EBADF, "peri_cam_fov_write sends an in-range value");
+    q.query = 0x02; // SET_MIN does not exist, and a code between SET_CUR and the GETs is refused
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "another request code is refused");
+    q.query = PERI_UVC_GET_CUR;
     q.query = 0x88;
     errno = 0;
     check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a request code past GET_DEF is refused");

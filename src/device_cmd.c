@@ -215,6 +215,72 @@ void controls_handle(const char *args, char *reply, size_t size)
     snprintf(reply, size, "ok module=%s %s\n", m.id, text);
 }
 
+// `fov <module-id> set <0-2>`: write the field of view. Reads first, and writes nothing unless every check
+// passes: the control must report itself writable and not disabled (GET_INFO bits 1 and 2), be one byte long
+// (GET_LEN), allow the value (GET_MAX) and have a current value to put back (GET_CUR). A write of the value
+// it already has is not sent. The reply carries `before` (the restore target) and the camera's own read-back,
+// which for an extension unit is a real query of the device. Which value is which angle is not known.
+static void fov_set(const char *id, const char *value_text, char *reply, size_t size)
+{
+    char *end;
+    unsigned long value = value_text ? strtoul(value_text, &end, 10) : 99;
+    if (!value_text || *end != '\0' || value > PERI_CAM_FOV_MAX) {
+        err(reply, size, "the value must be a whole number from 0 to 2", id);
+        return;
+    }
+    char node[32];
+    struct peri_module m;
+    if (!resolve_module(id, &m, node, sizeof node, reply, size))
+        return;
+    if (strcmp(m.engine, "v4l2") != 0) {
+        err(reply, size, "only a camera module has a field of view", id);
+        return;
+    }
+    if (!peri_cam_fov_approve_device(node)) {
+        err(reply, size, "this camera's descriptor has no field-of-view unit with selector 5", id);
+        return;
+    }
+    int fd = peri_cam_open(node);
+    if (fd < 0) {
+        err(reply, size, "cannot open the camera (see `journalctl --user -u perid`)", id);
+        return;
+    }
+    uint8_t len[2] = { 0 }, info = 0, max = 0, before = 0, after = 0;
+    if (peri_cam_fov_read(fd, PERI_UVC_GET_LEN, len, 2) != 0 || len[0] != 1 || len[1] != 0
+        || peri_cam_fov_read(fd, PERI_UVC_GET_INFO, &info, 1) != 0
+        || peri_cam_fov_read(fd, PERI_UVC_GET_MAX, &max, 1) != 0
+        || peri_cam_fov_read(fd, PERI_UVC_GET_CUR, &before, 1) != 0) {
+        close(fd);
+        err(reply, size, "the control could not be read (length, capabilities, maximum and current value), so nothing was written", id);
+        return;
+    }
+    if (!(info & 0x02) || (info & 0x04)) {
+        close(fd);
+        err(reply, size, "the camera says this control cannot be written right now (read-only or disabled), so nothing was written", id);
+        return;
+    }
+    if (value > max) {
+        close(fd);
+        err(reply, size, "the value is above the camera's own maximum, so nothing was written", id);
+        return;
+    }
+    if (before == value) {
+        close(fd);
+        snprintf(reply, size, "ok module=%s fov=set sent=none before=%u readback=%u note=already_at_that_value\n", m.id, before, before);
+        return;
+    }
+    int rc = peri_cam_fov_write(fd, (uint8_t)value, &after);
+    int saved_errno = errno;
+    close(fd);
+    if (rc != 0) {
+        char text[200];
+        snprintf(text, sizeof text, "the camera did not accept the change: %s", strerror(saved_errno));
+        err(reply, size, text, id);
+        return;
+    }
+    snprintf(reply, size, "ok module=%s fov=set sent=%lu before=%u readback=%u info=%02x stored=maybe\n", m.id, value, before, after, info);
+}
+
 void fov_handle(const char *args, char *reply, size_t size)
 {
     static const struct { const char *name; uint8_t code; uint16_t size; } queries[] = {
@@ -228,7 +294,11 @@ void fov_handle(const char *args, char *reply, size_t size)
     const char *query = strtok_r(nullptr, " \n", &rest);
     const char *want = strtok_r(nullptr, " \n", &rest);
     if (!id || !query || strtok_r(nullptr, " \n", &rest)) {
-        snprintf(reply, size, "err usage: fov <module-id> <cur|min|max|res|len|info|def> [size 1-4]\n");
+        snprintf(reply, size, "err usage: fov <module-id> <cur|min|max|res|len|info|def> [size 1-4] | set <0-2>\n");
+        return;
+    }
+    if (strcmp(query, "set") == 0) {
+        fov_set(id, want, reply, size);
         return;
     }
     size_t q = 0;

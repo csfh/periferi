@@ -13,7 +13,8 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-// Queries and reads, the one control write, and (argument-checked) reads of the field of view. Never the extended write (VIDIOC_S_EXT_CTRLS: it takes
+// Queries and reads, the one control write, and (argument-checked) reads and the one narrow write of the
+// field of view. Never the extended write (VIDIOC_S_EXT_CTRLS: it takes
 // several controls and compound payloads), and nothing that streams, sets a format or moves buffers.
 static const unsigned long allowed[] = {
     VIDIOC_QUERYCAP,
@@ -21,7 +22,7 @@ static const unsigned long allowed[] = {
     VIDIOC_QUERYMENU,
     VIDIOC_G_CTRL,
     VIDIOC_S_CTRL,
-    UVCIOC_CTRL_QUERY, // peri_cam_ioctl() lets only GET queries of the approved unit's selector 5 through
+    UVCIOC_CTRL_QUERY, // peri_cam_ioctl() lets only GET queries and a one-byte SET_CUR of the approved unit's selector 5 through
 };
 
 // The standard controls that may be written: each one the BRIO lists that a person would change.
@@ -54,9 +55,12 @@ static uint8_t approved_unit;
 
 static bool fov_query_ok(const struct uvc_xu_control_query *q)
 {
-    bool read = q->query >= PERI_UVC_GET_CUR && q->query <= PERI_UVC_GET_DEF;
-    return approved_unit != 0 && q->unit == approved_unit && q->selector == PERI_CAM_FOV_SELECTOR && read
-           && q->size >= 1 && q->size <= 4 && q->data != nullptr;
+    if (approved_unit == 0 || q->unit != approved_unit || q->selector != PERI_CAM_FOV_SELECTOR || q->data == nullptr)
+        return false;
+    if (q->query >= PERI_UVC_GET_CUR && q->query <= PERI_UVC_GET_DEF)
+        return q->size >= 1 && q->size <= 4; // a read
+    // The one write: a single byte, within the camera's own range.
+    return q->query == PERI_UVC_SET_CUR && q->size == 1 && *q->data <= PERI_CAM_FOV_MAX;
 }
 
 bool peri_cam_settable_id(uint32_t id)
@@ -450,5 +454,14 @@ int peri_cam_fov_read(int fd, uint8_t query, uint8_t *data, uint16_t size)
     struct uvc_xu_control_query q = { .unit = approved_unit, .selector = PERI_CAM_FOV_SELECTOR,
                                       .query = query, .size = size, .data = data };
     return peri_cam_ioctl(fd, UVCIOC_CTRL_QUERY, &q);
+}
+
+int peri_cam_fov_write(int fd, uint8_t value, uint8_t *readback)
+{
+    struct uvc_xu_control_query w = { .unit = approved_unit, .selector = PERI_CAM_FOV_SELECTOR,
+                                      .query = PERI_UVC_SET_CUR, .size = 1, .data = &value };
+    if (peri_cam_ioctl(fd, UVCIOC_CTRL_QUERY, &w) != 0)
+        return -1;
+    return peri_cam_fov_read(fd, PERI_UVC_GET_CUR, readback, 1);
 }
 

@@ -18,8 +18,11 @@ void controls_handle(const char *args, char *reply, size_t size);
 // (query: info, len, cur, min, max, res or def; size 1 to 4 bytes, default 1, 2 for len, 1 for info), one
 // query per request. The kernel itself sends GET_LEN and GET_INFO the first time it touches an extension-unit
 // control (both reads), and refuses a size that is not the control's own length. The unit is found by its GUID
-// in the camera's own descriptor and must list selector 5; nothing is written and no other unit or selector
-// can be reached (see camera.h).
+// in the camera's own descriptor and must list selector 5; a query writes nothing, and no other unit or
+// selector can be reached (see camera.h).
+//
+// `fov <module-id> set <0-2>` writes the field of view, after reading its length, capabilities, maximum and
+// current value (the restore target); it writes nothing unless the camera says the control is writable.
 void fov_handle(const char *args, char *reply, size_t size);
 
 // args: "<module-id> get" or "<module-id> set gain=<0-100> monitor=<0-100> monitor_on=<yes|no>
