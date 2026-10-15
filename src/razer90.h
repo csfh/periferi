@@ -62,8 +62,8 @@ void razer90_hidraw(uint8_t buf[RAZER90_HIDRAW_LEN], const uint8_t frame[RAZER90
 
 // What the mouse answers to its read queries. The request and reply layouts are those of the
 // public OpenRazer driver's DeathAdder V3 Pro block (driver/razermouse_driver.c, the case that
-// holds USB id 00c3); only the byte positions are used. None of these has been seen on this
-// mouse until a test vector below the codec says so.
+// holds USB id 00c3); only the byte positions are used. All four reads were seen working on the
+// real mouse (2026-10-14) and are test vectors; the two writes below have not been sent.
 //
 //   battery   class 07 cmd 80 size 2, no arguments; the level is reply argument 1, raw 0-255
 //   charging  class 07 cmd 84 size 2, no arguments; reply argument 1 (0 or 1)
@@ -84,7 +84,8 @@ bool razer90_poll_decode(const struct razer90_reply *reply, unsigned *hz);
 
 // The raw battery byte as a percentage, rounded. UNPROVEN: that the byte spans 0-255 is only the
 // doc comment above the public driver's battery attribute ("needs to be scaled from 0-255 ->
-// 0-100", razermouse_driver.c); the driver itself prints the raw byte. Not seen on this mouse.
+// 0-100", razermouse_driver.c); the driver itself prints the raw byte. The mouse answered 0x67 (103),
+// which fits 0-255 (40%) and could not be a 0-100 percentage; that is all that is established.
 unsigned razer90_battery_percent(uint8_t raw);
 
 // The two writes, from the same public driver block. Pure builders: nothing here sends.

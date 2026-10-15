@@ -110,6 +110,30 @@ int main(void)
     check(buf[0] == 0x00 && memcmp(buf + 1, frame, RAZER90_LEN) == 0 && buf[90] == frame[89],
           "hidraw prefix");
 
+    // The four read replies from the real DeathAdder V3 Pro (2026-10-14, owner's OK, one send each),
+    // as the 90 data bytes of the 91-byte reads. Each checksum is the XOR of bytes 2..87.
+    const uint8_t real_battery[RAZER90_LEN] = { 0x02, 0x1f, 0, 0, 0, 0x02, 0x07, 0x80, 0x00, 0x67, [88] = 0xe2 };
+    const uint8_t real_charging[RAZER90_LEN] = { 0x02, 0x1f, 0, 0, 0, 0x02, 0x07, 0x84, 0x00, 0x00, [88] = 0x81 };
+    const uint8_t real_dpi[RAZER90_LEN] = { 0x02, 0x1f, 0, 0, 0, 0x07, 0x04, 0x85, 0x00, 0x0c, 0x80, 0x0c, 0x80,
+                                            [88] = 0x86 };
+    const uint8_t real_poll[RAZER90_LEN] = { 0x02, 0x1f, 0, 0, 0, 0x01, 0x00, 0x85, 0x01, [88] = 0x85 };
+    uint8_t real_level;
+    bool real_charge = true;
+    struct razer90_dpi real_dpis;
+    unsigned real_hz;
+    check(razer90_decode(real_battery, 0x07, 0x80, &real_reply) == 0
+              && razer90_battery_decode(&real_reply, &real_level) && real_level == 0x67,
+          "real battery reply");
+    check(razer90_decode(real_charging, 0x07, 0x84, &real_reply) == 0
+              && razer90_charging_decode(&real_reply, &real_charge) && !real_charge,
+          "real charging reply");
+    check(razer90_decode(real_dpi, 0x04, 0x85, &real_reply) == 0
+              && razer90_dpi_decode(&real_reply, &real_dpis) && real_dpis.x == 3200 && real_dpis.y == 3200,
+          "real dpi reply");
+    check(razer90_decode(real_poll, 0x00, 0x85, &real_reply) == 0
+              && razer90_poll_decode(&real_reply, &real_hz) && real_hz == 1000,
+          "real poll-rate reply");
+
     // The four read requests the CLI sends, as the checksum byte they must carry (frame byte 88,
     // buffer index 89), worked out by hand: size ^ class ^ command, and no arguments.
     static const struct { uint8_t cls, cmd, size, crc; } reads[] = {
