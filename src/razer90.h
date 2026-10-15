@@ -63,7 +63,9 @@ void razer90_hidraw(uint8_t buf[RAZER90_HIDRAW_LEN], const uint8_t frame[RAZER90
 // What the mouse answers to its read queries. The request and reply layouts are those of the
 // public OpenRazer driver's DeathAdder V3 Pro block (driver/razermouse_driver.c, the case that
 // holds USB id 00c3); only the byte positions are used. All four reads were seen working on the
-// real mouse (2026-10-14) and are test vectors; the two writes below have not been sent.
+// real mouse (2026-10-14) and are test vectors. The two writes below were each sent and restored
+// once through the daemon (DPI 3200 -> 1600 -> 3200, poll rate 1000 -> 500 -> 1000) and read back from the
+// device; the mouse stores every DPI set.
 //
 //   battery   class 07 cmd 80 size 2, no arguments; the level is reply argument 1, raw 0-255
 //   charging  class 07 cmd 84 size 2, no arguments; reply argument 1 (0 or 1)
