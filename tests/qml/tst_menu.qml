@@ -109,9 +109,14 @@ TestCase {
   }
 
   function test_hidden_devices_are_dropped() {
-    var m = Menu.build([dev("g5", "YubiKey", "none", null, "fido"),
-                        dev("g6", "BRIO", "none", null, "camera")], [])
+    var m = Menu.build([dev("g5", "YubiKey", "none", null, "fido")], [])
     compare(m.unmanaged.length + m.managed.length + m.installable.length, 0)
+  }
+
+  // A camera is an ordinary device: listed, and managed once a module matches it.
+  function test_a_camera_is_not_hidden() {
+    var m = Menu.build([dev("g6", "BRIO", "none", null, null)], [])
+    compare(keys(m.unmanaged), ["g6"])
   }
 
   function test_sorted_by_name_then_key_not_scan_order() {

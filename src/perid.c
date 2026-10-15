@@ -24,7 +24,7 @@ static void on_signal(int)
 }
 
 // One interface per line: "<node> <vid>:<pid> <usage page>:<usage> <hidden> <group> <name>"
-// hidden is "-", "fido" or "camera". Clients decide what to show; nothing is left out here.
+// hidden is "-" or "fido". Clients decide what to show; nothing is left out here.
 static void send_list(int client)
 {
     struct peri_device devs[32];
@@ -45,7 +45,7 @@ static void send_list(int client)
 }
 
 // One physical device per line:
-// "<vid>:<pid> <installed|available|none> <module or -> <hidden: - fido camera> <group> <name>"
+// "<vid>:<pid> <installed|available|none> <module or -> <hidden: - fido> <group> <name>"
 // Hidden devices are included, with their reason; clients decide what to show.
 static void send_devices(int client)
 {

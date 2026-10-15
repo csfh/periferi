@@ -106,8 +106,6 @@ static void test_matches(void)
     d.usage = 0x58;
     d.hidden = PERI_HIDDEN_FIDO; // no module claims a security key, even on an exact match
     CHECK(!peri_module_matches(&m, &d));
-    d.hidden = PERI_HIDDEN_CAMERA;
-    CHECK(!peri_module_matches(&m, &d));
     d.hidden = PERI_VISIBLE;
     m.has_usage = false; // a module that names no interface matches none
     CHECK(!peri_module_matches(&m, &d));

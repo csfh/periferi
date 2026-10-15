@@ -3,13 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Why a physical device is left out of the default listing. Security keys and
-// cameras are not peripherals this tool controls; keeping them out of sight
-// also keeps them out of reach of `monitor` and `xap`.
+// Why a physical device is left out of the default listing. Security keys are not
+// peripherals this tool controls; keeping them out of sight also keeps them out of
+// reach of `monitor` and `xap`. (Cameras were hidden too until 2026-10-15, when the
+// owner asked to show them so a webcam can have a module.)
 enum peri_hidden : uint8_t {
     PERI_VISIBLE,
     PERI_HIDDEN_FIDO,   // some interface has a top-level collection on usage page 0xF1D0
-    PERI_HIDDEN_CAMERA, // the USB device also has a video-class (0x0e) interface
 };
 
 struct peri_device {
@@ -19,7 +19,6 @@ struct peri_device {
     uint16_t usage_page, usage; // the interface's control collection (see scan.c)
     char name[96];
     bool fido;         // this interface has a FIDO collection
-    bool camera;       // this interface's USB device has a video-class interface
     enum peri_hidden hidden; // set on every interface of the group by peri_classify()
 };
 
@@ -28,7 +27,7 @@ struct peri_device {
 void peri_parse_descriptor(const uint8_t *desc, size_t len, struct peri_device *dev);
 
 // Mark every interface of a physical device hidden if any one of its interfaces
-// is FIDO (wins) or sits on a camera. Reasons are per group, never per node.
+// is FIDO. The reason is per group, never per node.
 void peri_classify(struct peri_device *devs, size_t count);
 
 // The key that makes interfaces one physical device. USB (bus 3): the port path, without the
@@ -39,7 +38,7 @@ void peri_classify(struct peri_device *devs, size_t count);
 void peri_group_key(unsigned bus, const char *phys, const char *uniq, const char *node,
                     char *out, size_t size);
 
-// "-", "fido" or "camera": one token, as used in the daemon's list protocol.
+// "-" or "fido": one token, as used in the daemon's list protocol.
 const char *peri_hidden_name(enum peri_hidden hidden);
 
 enum peri_node_verdict {

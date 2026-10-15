@@ -33,7 +33,7 @@ bool peri_module_load(const char *path, struct peri_module *m, char *err, size_t
 struct peri_device;
 
 // True if the module drives this interface: vid, pid, usage page and usage all equal,
-// and the device is not hidden (no module can ever claim a security key or a camera).
+// and the device is not hidden (no module can ever claim a security key).
 bool peri_module_matches(const struct peri_module *m, const struct peri_device *d);
 
 enum peri_select {

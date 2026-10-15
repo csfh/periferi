@@ -61,48 +61,6 @@ void peri_parse_descriptor(const uint8_t *d, size_t len, struct peri_device *dev
     }
 }
 
-// A webcam's buttons show up as a small HID interface next to its video
-// interfaces. Walk up from the HID device to its USB device and look for a
-// video-class (0x0e) interface. Anything that is not USB has no such files,
-// which just means "not a camera".
-static bool usb_has_video_interface(const char *node)
-{
-    char path[PATH_MAX], real[PATH_MAX];
-    snprintf(path, sizeof path, "/sys/class/hidraw/%s/device", node);
-    if (!realpath(path, real)) // <usb device>/<interface>/<hid device>
-        return false;
-
-    char *slash = strrchr(real, '/');
-    if (!slash)
-        return false;
-    *slash = '\0'; // now the USB interface
-    snprintf(path, sizeof path, "%s/bInterfaceClass", real);
-    if (access(path, F_OK) != 0)
-        return false;
-    slash = strrchr(real, '/');
-    if (!slash)
-        return false;
-    *slash = '\0'; // now the USB device
-
-    DIR *dir = opendir(real);
-    if (!dir)
-        return false;
-    bool video = false;
-    for (struct dirent *e; !video && (e = readdir(dir));) {
-        if (!strchr(e->d_name, ':')) // interfaces are named "<device>:<config>.<n>"
-            continue;
-        snprintf(path, sizeof path, "%s/%s/bInterfaceClass", real, e->d_name);
-        FILE *f = fopen(path, "r");
-        unsigned cls = 0;
-        if (f && fscanf(f, "%x", &cls) == 1 && cls == 0x0e)
-            video = true;
-        if (f)
-            fclose(f);
-    }
-    closedir(dir);
-    return video;
-}
-
 enum peri_node_verdict peri_node_check(const struct peri_device *devs, size_t count,
                                        const char *node, bool needs_xap)
 {
@@ -141,7 +99,7 @@ void peri_group_key(unsigned bus, const char *phys, const char *uniq, const char
 
 const char *peri_hidden_name(enum peri_hidden hidden)
 {
-    return hidden == PERI_HIDDEN_FIDO ? "fido" : hidden == PERI_HIDDEN_CAMERA ? "camera" : "-";
+    return hidden == PERI_HIDDEN_FIDO ? "fido" : "-";
 }
 
 void peri_classify(struct peri_device *devs, size_t count)
@@ -153,8 +111,6 @@ void peri_classify(struct peri_device *devs, size_t count)
                 continue;
             if (devs[j].fido)
                 devs[i].hidden = PERI_HIDDEN_FIDO;
-            else if (devs[j].camera && devs[i].hidden == PERI_VISIBLE)
-                devs[i].hidden = PERI_HIDDEN_CAMERA;
         }
     }
 }
@@ -204,7 +160,6 @@ bool peri_read_device(const char *node, struct peri_device *dev)
         fclose(f);
         peri_parse_descriptor(desc, len, dev);
     }
-    dev->camera = bus == 0x0003 && usb_has_video_interface(node); // 3 = USB
     return true;
 }
 

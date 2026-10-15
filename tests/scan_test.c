@@ -55,7 +55,7 @@ static void test_descriptors(void)
     if (parse_fixture("seiren", &d))
         CHECK(d.usage_page == 0xFF53 && d.usage == 0x04 && !d.fido);
 
-    // A security key is FIDO; a camera's HID interface is not (it is found by topology).
+    // A security key is FIDO; a camera's HID interface is not.
     if (parse_fixture("yubikey", &d))
         CHECK(d.usage_page == 0xF1D0 && d.usage == 0x01 && d.fido);
     if (parse_fixture("brio", &d))
@@ -88,9 +88,9 @@ static void test_descriptors(void)
     CHECK(!d.fido && d.usage_page == 0x01);
 }
 
-static struct peri_device iface(const char *group, bool fido, bool camera)
+static struct peri_device iface(const char *group, bool fido)
 {
-    struct peri_device d = { .fido = fido, .camera = camera };
+    struct peri_device d = { .fido = fido };
     snprintf(d.group, sizeof d.group, "%s", group);
     return d;
 }
@@ -98,20 +98,18 @@ static struct peri_device iface(const char *group, bool fido, bool camera)
 static void test_classify(void)
 {
     struct peri_device devs[] = {
-        iface("key", false, false),    // an OTP keyboard interface of a security key...
-        iface("key", true, false),     // ...whose FIDO interface is the other one
-        iface("cam", false, true),     // a camera's buttons
-        iface("cam", false, false),    // (its other HID interface)
-        iface("plain", false, false),
-        iface("both", true, true),     // FIDO wins over camera
-        iface("other", false, false),  // a different group is not affected
+        iface("key", false),    // an OTP keyboard interface of a security key...
+        iface("key", true),     // ...whose FIDO interface is the other one
+        iface("cam", false),    // a camera's buttons: visible, like any other device
+        iface("cam", false),    // (its other HID interface)
+        iface("plain", false),
+        iface("other", false),  // a different group is not affected
     };
     peri_classify(devs, sizeof devs / sizeof *devs);
     CHECK(devs[0].hidden == PERI_HIDDEN_FIDO && devs[1].hidden == PERI_HIDDEN_FIDO);
-    CHECK(devs[2].hidden == PERI_HIDDEN_CAMERA && devs[3].hidden == PERI_HIDDEN_CAMERA);
+    CHECK(devs[2].hidden == PERI_VISIBLE && devs[3].hidden == PERI_VISIBLE);
     CHECK(devs[4].hidden == PERI_VISIBLE);
-    CHECK(devs[5].hidden == PERI_HIDDEN_FIDO);
-    CHECK(devs[6].hidden == PERI_VISIBLE);
+    CHECK(devs[5].hidden == PERI_VISIBLE);
 
     // Classifying again from scratch clears stale reasons.
     devs[1].fido = false;
@@ -120,13 +118,12 @@ static void test_classify(void)
 
     CHECK(strcmp(peri_hidden_name(PERI_VISIBLE), "-") == 0);
     CHECK(strcmp(peri_hidden_name(PERI_HIDDEN_FIDO), "fido") == 0);
-    CHECK(strcmp(peri_hidden_name(PERI_HIDDEN_CAMERA), "camera") == 0);
 }
 
 static struct peri_device node(const char *name, const char *group, uint16_t page, uint16_t usage,
-                               bool fido, bool camera)
+                               bool fido)
 {
-    struct peri_device d = iface(group, fido, camera);
+    struct peri_device d = iface(group, fido);
     snprintf(d.node, sizeof d.node, "%s", name);
     d.usage_page = page;
     d.usage = usage;
@@ -137,12 +134,12 @@ static struct peri_device node(const char *name, const char *group, uint16_t pag
 static void test_node_check(void)
 {
     struct peri_device devs[] = {
-        node("hidraw1", "key", 0xF1D0, 0x01, true, false),   // a security key's FIDO interface
-        node("hidraw2", "key", 0x01, 0x06, false, false),    // its OTP keyboard sibling
-        node("hidraw3", "cam", 0x0C, 0x01, false, true),     // a camera
-        node("hidraw4", "mic", 0xFF53, 0x04, false, false),  // a vendor control interface
-        node("hidraw5", "kbd", 0xFF51, 0x58, false, false),  // an XAP keyboard
-        node("hidraw6", "kbd", 0x01, 0x06, false, false),    // the keyboard's typing interface
+        node("hidraw1", "key", 0xF1D0, 0x01, true),   // a security key's FIDO interface
+        node("hidraw2", "key", 0x01, 0x06, false),    // its OTP keyboard sibling
+        node("hidraw3", "cam", 0x0C, 0x01, false),     // a camera
+        node("hidraw4", "mic", 0xFF53, 0x04, false),  // a vendor control interface
+        node("hidraw5", "kbd", 0xFF51, 0x58, false),  // an XAP keyboard
+        node("hidraw6", "kbd", 0x01, 0x06, false),    // the keyboard's typing interface
     };
     size_t n = sizeof devs / sizeof *devs;
     peri_classify(devs, n);
@@ -181,7 +178,7 @@ static void test_group_key(void)
     CHECK(strcmp(a, "aa:bb:cc:dd:ee:ff+11:22:33:44:55:66") == 0);
 
     // A Bluetooth security key next to a Bluetooth mouse on one adapter: only the key is hidden.
-    struct peri_device devs[2] = { iface("", true, false), iface("", false, false) };
+    struct peri_device devs[2] = { iface("", true), iface("", false) };
     peri_group_key(5, "aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66", "hidraw4", devs[0].group, 64);
     peri_group_key(5, "aa:bb:cc:dd:ee:ff", "66:55:44:33:22:11", "hidraw5", devs[1].group, 64);
     peri_classify(devs, 2);

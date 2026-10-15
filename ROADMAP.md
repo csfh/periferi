@@ -81,10 +81,11 @@ built in three small steps, daemon first:
    does not break. Needs a small vendored TOML parser.
 2. **Inventory.** All physical HID devices (grouped by USB path), read from sysfs only;
    a node is never opened to describe it.
-   - [x] 2a: the scan covers every vendor; FIDO (any interface on usage page `0xF1D0`) and
-     camera (a video-class sibling interface) are classified **per physical device** and hidden
-     from `peri list` (`--all` shows them, labelled). `peri monitor` refuses security keys,
-     `peri xap` also needs an `ff51:0058` control interface, and no module can match a hidden device.
+   - [x] 2a: the scan covers every vendor; FIDO (any interface on usage page `0xF1D0`) is
+     classified **per physical device** and hidden from `peri list` (`--all` shows it, labelled).
+     `peri monitor` refuses security keys, `peri xap` also needs an `ff51:0058` control interface,
+     and no module can match a hidden device. Cameras were hidden the same way until 2026-10-15,
+     when the owner chose to show them (so a webcam can have a module): they are ordinary devices now.
      Real YubiKey, BRIO, Seiren and CTRL descriptors are test fixtures.
    - [x] 2b: non-USB HID is grouped by `HID_PHYS` + `HID_UNIQ` (USB unchanged); the daemon's
      `devices` request gives each physical device a status (installed / available / none) from
@@ -212,6 +213,14 @@ Prerequisite for all automation.
   - [x] panel pane (`MouseControls.qml` over `PeriMouse.qml` and `mouse.js`, tests in `tst_mouse.qml`): battery, DPI slider and presets, poll rate; rendered offscreen against a fake peri with canned replies, online and asleep, and then seen in the owner's real shell on 2026-10-15 (their screenshot: battery 39%, DPI 3200 and 1000 Hz highlighted, controls on). No click on it has been reported yet; the daemon's writes it would send were tried by hand. Controls are on (`PeriMouse.writable` is true since both sets were seen working); a click or a slider release now writes, as on the mic pane. Install: `just plugin` and `omarchy restart shell` (the owner's steps)
   - Not built (the raw OpenRazer driver also gives this mouse these; each needs new frames and the owner's OK): DPI stages (`04/86`, 0x26 bytes, and the matching set), the low-battery threshold, the idle time, and the faster poll rates (4000 and 8000 Hz belong to the HyperPolling dongle, with another command, and `00c3` is not that dongle). The owner moved on without asking for them, so they stay unbuilt
   - Excluded: device mode (`00/04`, never), the serial (`00/82`, never recorded: the repo is public), lighting (the owner confirmed on 2026-10-14 that this mouse has none)
+
+- [ ] Logitech BRIO (`046d:085e`, a UVC webcam driven by `uvcvideo`): the owner asked for it on 2026-10-15, chose to show cameras and to count the Logitech extras (field of view, HDR, RightLight) as part of the job. Plan, in small steps, each first write needing the owner's OK:
+  - [x] cameras are no longer hidden (the BRIO lists as `046d:085e none`)
+  - [ ] a `v4l2` engine: the module matches the BRIO's HID interface (consumer control `000c:0001`) to identify the device, and the daemon finds its capture node (`/dev/video*` with the video-capture capability) through sysfs; control ioctls only (`VIDIOC_QUERYCTRL`, `G_CTRL`, `S_CTRL`), never `STREAMON` and never a frame read; the `/dev/video*` nodes already carry the user's ACL, so no udev rule
+  - [ ] `peri status <module-id>` lists the standard controls (read on 2026-10-15 by hand: brightness, contrast, saturation, sharpness, gain, backlight compensation, power-line frequency, white balance auto and temperature, exposure auto and time and dynamic frame rate, focus auto and absolute, zoom 100-500, pan and tilt)
+  - [ ] `peri set <module-id> <control>=<value>`, bounded by each control's own range
+  - [ ] a panel pane
+  - [ ] the Logitech extras: not V4L2 controls (UVC extension-unit queries); research first, nothing sent until the frames are documented and the owner agrees
 
 ## Housekeeping
 

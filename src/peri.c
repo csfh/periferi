@@ -361,7 +361,7 @@ static bool is_hidden(const struct dev_row *r)
 }
 
 // {"group":..., "vid":"359b", "pid":"0009", "name":..., "status":"installed|available|none",
-//  "module":"<id>"|null, "hidden":"fido"|"camera"|null}
+//  "module":"<id>"|null, "hidden":"fido"|null}
 static void print_json(const struct dev_row *rows, size_t count, bool all)
 {
     fputc('[', stdout);
@@ -404,7 +404,7 @@ static void print_table(const struct dev_row *rows, size_t count)
         printf("%04x:%04x  %-30s  %-11s%s\n", r->vid, r->pid, r->name, r->status, r->module);
     }
     if (hidden)
-        printf("(%zu hidden: security keys and cameras; `peri list --all` shows them)\n", hidden);
+        printf("(%zu hidden: security keys; `peri list --all` shows them)\n", hidden);
 }
 
 // peri list [--all] [--json]: physical devices with their module status. --all shows
