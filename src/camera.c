@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <linux/uvcvideo.h>
 #include <linux/videodev2.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +13,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-// Queries and reads, and the one control write. Never the extended write (VIDIOC_S_EXT_CTRLS: it takes
+// Queries and reads, the one control write, and (argument-checked) reads of the field of view. Never the extended write (VIDIOC_S_EXT_CTRLS: it takes
 // several controls and compound payloads), and nothing that streams, sets a format or moves buffers.
 static const unsigned long allowed[] = {
     VIDIOC_QUERYCAP,
@@ -20,6 +21,7 @@ static const unsigned long allowed[] = {
     VIDIOC_QUERYMENU,
     VIDIOC_G_CTRL,
     VIDIOC_S_CTRL,
+    UVCIOC_CTRL_QUERY, // peri_cam_ioctl() lets only GET queries of the approved unit's selector 5 through
 };
 
 // The standard controls that may be written: each one the BRIO lists that a person would change.
@@ -43,6 +45,20 @@ static const uint32_t settable[] = {
     V4L2_CID_ZOOM_ABSOLUTE,
 };
 
+// The descriptor bytes of the field of view's extension unit GUID, as stored (little-endian fields).
+const uint8_t PERI_CAM_FOV_GUID[16] = { 0x15, 0x02, 0xe4, 0x49, 0x34, 0xf4, 0xfe, 0x47,
+                                        0xb1, 0x58, 0x0e, 0x88, 0x50, 0x23, 0xe5, 0x1b };
+
+// The unit peri_cam_fov_approve() approved, 0 when none. The only thing that lets a query through.
+static uint8_t approved_unit;
+
+static bool fov_query_ok(const struct uvc_xu_control_query *q)
+{
+    bool read = q->query >= PERI_UVC_GET_CUR && q->query <= PERI_UVC_GET_DEF;
+    return approved_unit != 0 && q->unit == approved_unit && q->selector == PERI_CAM_FOV_SELECTOR && read
+           && q->size >= 1 && q->size <= 4 && q->data != nullptr;
+}
+
 bool peri_cam_settable_id(uint32_t id)
 {
     for (size_t i = 0; i < sizeof settable / sizeof *settable; i++)
@@ -62,7 +78,8 @@ bool peri_cam_ioctl_allowed(unsigned long request)
 int peri_cam_ioctl(int fd, unsigned long request, void *arg)
 {
     if (!peri_cam_ioctl_allowed(request)
-        || (request == VIDIOC_S_CTRL && !peri_cam_settable_id(((struct v4l2_control *)arg)->id))) {
+        || (request == VIDIOC_S_CTRL && !peri_cam_settable_id(((struct v4l2_control *)arg)->id))
+        || (request == UVCIOC_CTRL_QUERY && !fov_query_ok((const struct uvc_xu_control_query *)arg))) {
         errno = EPERM;
         return -1;
     }
@@ -370,3 +387,68 @@ bool peri_cam_controls_text(int fd, const struct peri_cam_ctrl *ctrls, size_t co
     }
     return true;
 }
+
+bool peri_uvc_find_unit(const uint8_t *desc, size_t len, const uint8_t guid[16], uint8_t *unit, uint32_t *controls)
+{
+    bool in_video_control = false;
+    for (size_t i = 0; i + 2 <= len;) {
+        size_t n = desc[i];
+        if (n < 2 || i + n > len)
+            return false; // a descriptor that runs off the end: the blob is malformed
+        uint8_t type = desc[i + 1];
+        if (type == 0x04 && n >= 9) // interface: class 0x0e, subclass 0x01 is video control
+            in_video_control = desc[i + 5] == 0x0e && desc[i + 6] == 0x01;
+        else if (type == 0x24 && in_video_control && n >= 24 && desc[i + 2] == 0x06) {
+            // extension unit: id, 16-byte GUID, control count, input pins, their ids, bmControls size, bmControls
+            size_t pins = desc[i + 21];
+            if (22 + pins + 1 <= n) {
+                size_t size = desc[i + 22 + pins];
+                if (23 + pins + size <= n && memcmp(desc + i + 4, guid, 16) == 0) {
+                    uint32_t bits = 0;
+                    for (size_t b = 0; b < size && b < 4; b++)
+                        bits |= (uint32_t)desc[i + 23 + pins + b] << (8 * b);
+                    *unit = desc[i + 3];
+                    *controls = bits;
+                    return true;
+                }
+            }
+        }
+        i += n;
+    }
+    return false;
+}
+
+bool peri_cam_fov_approve(const uint8_t *desc, size_t len)
+{
+    uint8_t unit;
+    uint32_t controls;
+    approved_unit = 0;
+    if (!peri_uvc_find_unit(desc, len, PERI_CAM_FOV_GUID, &unit, &controls) || unit == 0
+        || !(controls & (1u << (PERI_CAM_FOV_SELECTOR - 1))))
+        return false;
+    approved_unit = unit;
+    return true;
+}
+
+bool peri_cam_fov_approve_device(const char *hidraw_node)
+{
+    char usb[PATH_MAX], path[PATH_MAX + 16];
+    if (!usb_device_of_hidraw(hidraw_node, usb, sizeof usb))
+        return false;
+    snprintf(path, sizeof path, "%s/descriptors", usb);
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return false;
+    static uint8_t blob[256 * 1024];
+    size_t got = fread(blob, 1, sizeof blob, f);
+    fclose(f);
+    return peri_cam_fov_approve(blob, got);
+}
+
+int peri_cam_fov_read(int fd, uint8_t query, uint8_t *data, uint16_t size)
+{
+    struct uvc_xu_control_query q = { .unit = approved_unit, .selector = PERI_CAM_FOV_SELECTOR,
+                                      .query = query, .size = size, .data = data };
+    return peri_cam_ioctl(fd, UVCIOC_CTRL_QUERY, &q);
+}
+

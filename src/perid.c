@@ -199,6 +199,12 @@ static void handle(int client)
         (void)!write(client, reply, strlen(reply));
         return;
     }
+    if (strncmp(req, "fov ", 4) == 0) {
+        char reply[256];
+        fov_handle(req + 4, reply, sizeof reply);
+        (void)!write(client, reply, strlen(reply));
+        return;
+    }
     if (strncmp(req, "controls ", 9) == 0) {
         char reply[1024]; // every control with its range, and the menus' options
         controls_handle(req + 9, reply, sizeof reply);

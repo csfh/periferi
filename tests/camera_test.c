@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <linux/uvcvideo.h>
 #include <linux/videodev2.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,6 +21,40 @@ static const char *short_name(const char *name)
     static char buf[64];
     peri_cam_short_name(name, buf, sizeof buf);
     return buf;
+}
+
+// A USB configuration descriptor blob shaped like the BRIO's: a video-control interface with two
+// extension units (14 and 10, the second the field of view with bmControls ba 6f), then an audio-control
+// interface whose feature unit carries the same GUID bytes as a decoy. `fov_bits` replaces unit 10's
+// first bmControls byte, so a test can take selector 5 away.
+static size_t build_descriptor(uint8_t *out, uint8_t fov_bits, bool with_fov_unit)
+{
+    size_t n = 0;
+    static const uint8_t other[16] = { 0x6a, 0xd1, 0x49, 0x2c, 0xb8, 0x32, 0x85, 0x44,
+                                       0x3e, 0xa8, 0x64, 0x3a, 0x15, 0x23, 0x62, 0xf2 };
+    const uint8_t config[] = { 9, 0x02, 0, 0, 2, 1, 0, 0x80, 0xfa };
+    const uint8_t vc_if[] = { 9, 0x04, 0, 0, 1, 0x0e, 0x01, 0, 0 };
+    const uint8_t vc_hdr[] = { 13, 0x24, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0, 1, 1 };
+    memcpy(out + n, config, sizeof config); n += sizeof config;
+    memcpy(out + n, vc_if, sizeof vc_if); n += sizeof vc_if;
+    memcpy(out + n, vc_hdr, sizeof vc_hdr); n += sizeof vc_hdr;
+    // unit 14: 6 controls, one input pin (source 2), bmControls 3f 00
+    out[n++] = 27; out[n++] = 0x24; out[n++] = 0x06; out[n++] = 14;
+    memcpy(out + n, other, 16); n += 16;
+    out[n++] = 6; out[n++] = 1; out[n++] = 2; out[n++] = 2; out[n++] = 0x3f; out[n++] = 0x00; out[n++] = 0;
+    if (with_fov_unit) {
+        // unit 10: 11 controls, one input pin (source 5), bmControls <fov_bits> 6f
+        out[n++] = 27; out[n++] = 0x24; out[n++] = 0x06; out[n++] = 10;
+        memcpy(out + n, PERI_CAM_FOV_GUID, 16); n += 16;
+        out[n++] = 11; out[n++] = 1; out[n++] = 5; out[n++] = 2; out[n++] = fov_bits; out[n++] = 0x6f; out[n++] = 0;
+    }
+    const uint8_t ac_if[] = { 9, 0x04, 1, 0, 0, 0x01, 0x01, 0, 0 };
+    memcpy(out + n, ac_if, sizeof ac_if); n += sizeof ac_if;
+    // an audio-control "feature unit" (subtype 6) laid out like an extension unit, same GUID bytes
+    out[n++] = 27; out[n++] = 0x24; out[n++] = 0x06; out[n++] = 99;
+    memcpy(out + n, PERI_CAM_FOV_GUID, 16); n += 16;
+    out[n++] = 11; out[n++] = 1; out[n++] = 5; out[n++] = 2; out[n++] = 0xff; out[n++] = 0xff; out[n++] = 0;
+    return n;
 }
 
 int main(void)
@@ -145,6 +180,84 @@ int main(void)
     check(!peri_cam_status_text(c, 2, small, sizeof small), "status text that does not fit is refused");
     c[0].flags = V4L2_CTRL_FLAG_INACTIVE;
     check(peri_cam_inactive(&c[0]) && !peri_cam_inactive(&c[1]), "inactive flag");
+
+    // ---- the field-of-view extension unit: found by GUID in the descriptor, read only ----------------
+    uint8_t blob[512];
+    size_t blen = build_descriptor(blob, 0xba, true);
+    uint8_t unit = 0;
+    uint32_t bits = 0;
+    check(peri_uvc_find_unit(blob, blen, PERI_CAM_FOV_GUID, &unit, &bits) && unit == 10 && bits == 0x6fba,
+          "the field-of-view unit is found by its GUID, not by a fixed id");
+    const uint8_t stranger[16] = { 1, 2, 3 };
+    check(!peri_uvc_find_unit(blob, blen, stranger, &unit, &bits), "an unknown GUID is not found");
+    // Malformed blobs are refused and never read past their end (these tests run under ASan).
+    // The layout: config 9 + video interface 9 + header 13, so unit 14 starts at 31 and unit 10 at 58.
+    check(!peri_uvc_find_unit(blob, 58 + 10, PERI_CAM_FOV_GUID, &unit, &bits), "a blob cut inside the unit is not found");
+    check(peri_uvc_find_unit(blob, blen - 3, PERI_CAM_FOV_GUID, &unit, &bits) && unit == 10,
+          "a blob cut after the unit still has it");
+    uint8_t cut[512];
+    memcpy(cut, blob, blen);
+    cut[31] = 200; // unit 14's bLength claims far more than is left
+    check(!peri_uvc_find_unit(cut, blen, PERI_CAM_FOV_GUID, &unit, &bits), "an overlong descriptor length is refused");
+    cut[31] = 0; // a zero length would loop forever if it were trusted
+    check(!peri_uvc_find_unit(cut, blen, PERI_CAM_FOV_GUID, &unit, &bits), "a zero descriptor length is refused");
+    check(!peri_uvc_find_unit(blob, 0, PERI_CAM_FOV_GUID, &unit, &bits), "an empty blob has nothing");
+    uint8_t no_fov[512];
+    size_t nlen = build_descriptor(no_fov, 0xba, false);
+    check(!peri_uvc_find_unit(no_fov, nlen, PERI_CAM_FOV_GUID, &unit, &bits),
+          "an audio unit with the same GUID bytes is not a video extension unit");
+
+    // Before any approval nothing reaches the camera, whatever is asked.
+    uint8_t buf[2] = { 0 };
+    struct uvc_xu_control_query q = { .unit = 10, .selector = PERI_CAM_FOV_SELECTOR, .query = PERI_UVC_GET_CUR,
+                                      .size = 1, .data = buf };
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "no unit approved: refused");
+    check(peri_cam_fov_read(-1, PERI_UVC_GET_CUR, buf, 1) == -1 && errno == EPERM, "no unit approved: fov read refused");
+
+    // A descriptor without selector 5 approves nothing (bmControls 0xaa has bit 4 clear).
+    size_t weak = build_descriptor(blob, 0xaa, true);
+    check(!peri_cam_fov_approve(blob, weak), "a unit without selector 5 is not approved");
+    errno = 0;
+    check(peri_cam_fov_read(-1, PERI_UVC_GET_CUR, buf, 1) == -1 && errno == EPERM, "still refused");
+
+    blen = build_descriptor(blob, 0xba, true);
+    check(peri_cam_fov_approve(blob, blen), "the real layout approves unit 10");
+
+    // Approved: only GET queries of selector 5 on that unit, one to four bytes, get as far as the fd.
+    const uint8_t gets[] = { PERI_UVC_GET_CUR, PERI_UVC_GET_MIN, PERI_UVC_GET_MAX, PERI_UVC_GET_RES,
+                             PERI_UVC_GET_LEN, PERI_UVC_GET_INFO, PERI_UVC_GET_DEF };
+    for (size_t i = 0; i < sizeof gets; i++) {
+        errno = 0;
+        check(peri_cam_fov_read(-1, gets[i], buf, 1) == -1 && errno == EBADF, "an approved read reaches the fd");
+    }
+    // Everything else is refused before the fd is touched.
+    q.unit = 10; q.selector = 5; q.size = 1; q.data = buf;
+    q.query = 0x01; // SET_CUR: a write
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "SET_CUR is refused");
+    q.query = 0x88;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a request code past GET_DEF is refused");
+    q.query = 0x80;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a request code before GET_CUR is refused");
+    q.query = PERI_UVC_GET_CUR;
+    q.selector = 4;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "another selector is refused");
+    q.selector = 5; q.unit = 14;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "another unit is refused");
+    q.unit = 10; q.size = 0;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a zero-length query is refused");
+    q.size = 5;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "an oversized query is refused");
+    q.size = 1; q.data = nullptr;
+    errno = 0;
+    check(peri_cam_ioctl(-1, UVCIOC_CTRL_QUERY, &q) == -1 && errno == EPERM, "a query with no buffer is refused");
 
     if (failures == 0)
         printf("camera_test: all passed\n");

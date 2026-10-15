@@ -7,12 +7,13 @@
 // The V4L2 engine: a webcam's controls (brightness, exposure, focus, zoom ...) through the kernel's
 // V4L2 control ioctls. It never streams: every ioctl goes through peri_cam_ioctl(), which refuses
 // anything not on a short allowlist (control queries, control reads, one control write limited to a fixed
-// list of standard controls), so the camera can never be told to start capturing, to set a format or to
-// hand over a frame (a test checks the list). Nothing here reads
-// or writes video data.
+// list of standard controls, and GET reads of one Logitech extension-unit selector), so the camera can
+// never be told to start capturing, to set a format or to hand over a frame (a test checks the list).
+// Nothing here reads or writes video data.
 
-// Is this ioctl one the engine may issue? Control queries and reads, and VIDIOC_S_CTRL (one control
-// write), which peri_cam_ioctl() further limits to the standard controls in peri_cam_settable_id().
+// Is this ioctl one the engine may issue? Control queries and reads, VIDIOC_S_CTRL (one control write,
+// which peri_cam_ioctl() further limits to the standard controls in peri_cam_settable_id()) and
+// UVCIOC_CTRL_QUERY (which peri_cam_ioctl() limits to GET reads of the approved extension unit's selector 5).
 bool peri_cam_ioctl_allowed(unsigned long request);
 
 // Is this one of the standard V4L2 controls the engine may WRITE (brightness, exposure, focus, zoom,
@@ -21,8 +22,9 @@ bool peri_cam_ioctl_allowed(unsigned long request);
 // (the BRIO's field of view, firmware and factory-reset functions live there).
 bool peri_cam_settable_id(uint32_t id);
 
-// ioctl(2) on a video node, or -1 with errno EPERM when the request is not allowed, or is a control
-// write to an id that is not settable.
+// ioctl(2) on a video node, or -1 with errno EPERM when the request is not allowed, is a control write
+// to an id that is not settable, or is an extension-unit query other than a GET of the approved unit's
+// selector 5 (see below).
 int peri_cam_ioctl(int fd, unsigned long request, void *arg);
 
 // "Exposure Time, Absolute" -> "exposure_time_absolute": lower case, every run of other characters
@@ -47,6 +49,50 @@ bool peri_cam_inactive(const struct peri_cam_ctrl *c);
 // is not settable, the control is read-only or inactive, or the value is out of range, off the step
 // or not a boolean 0/1. (A menu's holes are checked against the camera by peri_cam_set().)
 bool peri_cam_check_value(const struct peri_cam_ctrl *c, int64_t value, char *why, size_t size);
+
+// ---- the field-of-view extension unit (read only for now) ---------------------------------------------
+//
+// The BRIO's field of view is not a V4L2 control: it is selector 5 of a Logitech extension unit (UVC
+// vendor extension), found by the unit's GUID in the camera's own USB descriptor. The engine may READ
+// that one selector (UVCIOC_CTRL_QUERY with a GET request) and nothing else: the unit must be the one a
+// descriptor approved by GUID (never a hard-coded unit id), the selector must be 5, and a write
+// (SET_CUR) is refused. A write is a separate, later change that needs the owner's OK on exact bytes.
+// Logitech cameras carry other vendor units for firmware and test functions: they are never queried.
+
+// The extension unit GUID of the field of view, in the byte order the descriptor stores it
+// (49e40215-f434-47fe-b158-0e885023e51b as lsusb prints it).
+extern const uint8_t PERI_CAM_FOV_GUID[16];
+#define PERI_CAM_FOV_SELECTOR 5
+
+// UVC class request codes the engine may send to the selector (all reads).
+#define PERI_UVC_GET_CUR 0x81
+#define PERI_UVC_GET_MIN 0x82
+#define PERI_UVC_GET_MAX 0x83
+#define PERI_UVC_GET_RES 0x84
+#define PERI_UVC_GET_LEN 0x85
+#define PERI_UVC_GET_INFO 0x86
+#define PERI_UVC_GET_DEF 0x87
+
+// Find the extension unit with this GUID in a USB configuration descriptor blob (the sysfs
+// `descriptors` file), inside a video-control interface only (an audio feature unit has the same
+// descriptor subtype). On success `unit` is its unit id and `controls` its bmControls bitmap (bit n set
+// means selector n+1 exists; up to 32 bits). False when there is no such unit or the blob is malformed.
+bool peri_uvc_find_unit(const uint8_t *desc, size_t len, const uint8_t guid[16], uint8_t *unit, uint32_t *controls);
+
+// Approve the field-of-view unit from a descriptor blob: the one place that sets which unit
+// peri_cam_ioctl() lets a query reach. False (and nothing approved) when the GUID is not in the blob or
+// the unit does not list selector 5.
+bool peri_cam_fov_approve(const uint8_t *desc, size_t len);
+
+// The same for the USB device that owns `hidraw_node`, reading its descriptors from sysfs.
+bool peri_cam_fov_approve_device(const char *hidraw_node);
+
+// One read of the approved unit's selector 5: `query` is one of the PERI_UVC_GET_* codes. `size` bytes
+// are read into `data`: the kernel refuses (ENOBUFS) a size that is not the control's own length (read
+// PERI_UVC_GET_LEN first: 2 bytes, little endian), and the first time it touches the control it sends GET_LEN
+// and GET_INFO itself (both reads) before the query. 0 on success, -1 and errno otherwise (EPERM if the
+// query is not allowed or no unit is approved; ENOENT, ENOBUFS and EBADRQC are the kernel's refusals).
+int peri_cam_fov_read(int fd, uint8_t query, uint8_t *data, uint16_t size);
 
 // The control with this short name, or null.
 const struct peri_cam_ctrl *peri_cam_find(const struct peri_cam_ctrl *ctrls, size_t count, const char *name);

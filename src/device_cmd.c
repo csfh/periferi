@@ -215,6 +215,84 @@ void controls_handle(const char *args, char *reply, size_t size)
     snprintf(reply, size, "ok module=%s %s\n", m.id, text);
 }
 
+void fov_handle(const char *args, char *reply, size_t size)
+{
+    static const struct { const char *name; uint8_t code; uint16_t size; } queries[] = {
+        { "cur", PERI_UVC_GET_CUR, 1 }, { "min", PERI_UVC_GET_MIN, 1 }, { "max", PERI_UVC_GET_MAX, 1 },
+        { "res", PERI_UVC_GET_RES, 1 }, { "len", PERI_UVC_GET_LEN, 2 }, { "info", PERI_UVC_GET_INFO, 1 },
+        { "def", PERI_UVC_GET_DEF, 1 },
+    };
+    char line[128], *rest;
+    snprintf(line, sizeof line, "%s", args);
+    const char *id = strtok_r(line, " \n", &rest);
+    const char *query = strtok_r(nullptr, " \n", &rest);
+    const char *want = strtok_r(nullptr, " \n", &rest);
+    if (!id || !query || strtok_r(nullptr, " \n", &rest)) {
+        snprintf(reply, size, "err usage: fov <module-id> <cur|min|max|res|len|info|def> [size 1-4]\n");
+        return;
+    }
+    size_t q = 0;
+    while (q < sizeof queries / sizeof *queries && strcmp(queries[q].name, query))
+        q++;
+    if (q == sizeof queries / sizeof *queries) {
+        err(reply, size, "query must be cur, min, max, res, len, info or def", id);
+        return;
+    }
+    uint16_t bytes = queries[q].size;
+    if (want) {
+        char *end;
+        unsigned long v = strtoul(want, &end, 10);
+        if (*end != '\0' || v < 1 || v > 4) {
+            err(reply, size, "size must be a whole number from 1 to 4", id);
+            return;
+        }
+        bytes = (uint16_t)v;
+    }
+
+    char node[32];
+    struct peri_module m;
+    if (!resolve_module(id, &m, node, sizeof node, reply, size))
+        return;
+    if (strcmp(m.engine, "v4l2") != 0) {
+        err(reply, size, "only a camera module has a field of view", id);
+        return;
+    }
+    if (!peri_cam_fov_approve_device(node)) {
+        err(reply, size, "this camera's descriptor has no field-of-view unit with selector 5", id);
+        return;
+    }
+    int fd = peri_cam_open(node);
+    if (fd < 0) {
+        err(reply, size, "cannot open the camera (see `journalctl --user -u perid`)", id);
+        return;
+    }
+    uint8_t data[4] = { 0 };
+    int rc = peri_cam_fov_read(fd, queries[q].code, data, bytes);
+    int saved_errno = errno;
+    close(fd);
+    if (rc != 0) {
+        // What the kernel's refusals mean, so a report of what went out is right (uvc_xu_ctrl_query): ENOENT is an
+        // unknown unit or selector on this video node's chain, or the kernel's own first reads failing; ENOBUFS is
+        // a size that is not the control's length (its first reads went out, the query did not); EBADRQC is a query
+        // the control does not support.
+        char text[240];
+        if (saved_errno == ENOENT)
+            snprintf(text, sizeof text, "this video node has no such control (or the kernel's first reads of it failed), and the %s query was not sent", query);
+        else if (saved_errno == ENOBUFS)
+            snprintf(text, sizeof text, "the size is not the control's length, so the %s query was not sent (read `len` first)", query);
+        else if (saved_errno == EBADRQC)
+            snprintf(text, sizeof text, "the control does not support the %s query", query);
+        else
+            snprintf(text, sizeof text, "the camera did not answer the %s query: %s", query, strerror(saved_errno));
+        err(reply, size, text, id);
+        return;
+    }
+    char hex[16] = "";
+    for (uint16_t i = 0; i < bytes; i++)
+        snprintf(hex + 2 * i, sizeof hex - 2 * i, "%02x", data[i]);
+    snprintf(reply, size, "ok module=%s query=%s size=%u bytes=%s\n", m.id, query, bytes, hex);
+}
+
 void status_handle(const char *args, char *reply, size_t size)
 {
     char id[64];
