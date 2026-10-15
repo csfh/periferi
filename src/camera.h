@@ -70,6 +70,23 @@ int peri_cam_open(const char *hidraw_node);
 // the camera lists them. Returns how many (at most `max`).
 size_t peri_cam_list(int fd, struct peri_cam_ctrl *out, size_t max);
 
+// What the panel needs to draw one control: "<type>:<min>:<max>:<step>:<value>:<flags>", for example
+// "int:0:255:1:128:s". type is int, bool or menu; flags are letters, in this order: s the control may be
+// set by this program, i it is inactive right now, r it is read-only; "-" for none. False if it does not fit.
+bool peri_cam_describe(const struct peri_cam_ctrl *c, char *out, size_t size);
+
+// One menu option as a token without spaces: (1, "Manual Mode") -> "1:Manual_Mode". Anything that is not a
+// letter, digit, '-' or '.' becomes '_'. False if it does not fit.
+bool peri_cam_option_token(int index, const char *name, char *out, size_t size);
+
+// The options a menu control offers, "1:Manual_Mode,3:Aperture_Priority_Mode", comma separated, only the
+// indices the camera really has (a menu can have holes). Empty for a control that is not a menu.
+bool peri_cam_options(int fd, const struct peri_cam_ctrl *c, char *out, size_t size);
+
+// The whole reply body of `peri controls`: "name=<describe> ... name.options=<options> ...", a space
+// between tokens, an `.options` token after each menu control. False if it does not fit in `size`.
+bool peri_cam_controls_text(int fd, const struct peri_cam_ctrl *ctrls, size_t count, char *out, size_t size);
+
 // "brightness=128 contrast=128 ..." for `peri status`, a space between pairs. False if it does not
 // fit in `size`.
 bool peri_cam_status_text(const struct peri_cam_ctrl *ctrls, size_t count, char *out, size_t size);

@@ -115,6 +115,27 @@ int main(void)
     check(peri_cam_find(list, 2, "pan_absolute") == &list[1] && peri_cam_find(list, 2, "zoom_absolute") == nullptr,
           "find by name");
 
+    // What the panel is told about each control.
+    char desc[64];
+    check(peri_cam_describe(&brightness, desc, sizeof desc) && strcmp(desc, "int:0:255:1:128:s") == 0, "describe an integer");
+    check(peri_cam_describe(&autowb, desc, sizeof desc) && strcmp(desc, "bool:0:1:1:1:s") == 0, "describe a boolean");
+    check(peri_cam_describe(&exposure, desc, sizeof desc) && strcmp(desc, "int:3:2047:1:0:si") == 0, "describe an inactive control");
+    check(peri_cam_describe(&locked, desc, sizeof desc) && strcmp(desc, "int:0:255:1:128:sr") == 0, "describe a read-only control");
+    check(peri_cam_describe(&odd, desc, sizeof desc) && strcmp(desc, "int:0:9:1:0:-") == 0, "describe a control that may not be set");
+    check(peri_cam_describe(&pan, desc, sizeof desc) && strcmp(desc, "int:-36000:36000:3600:10800:s") == 0, "describe a stepped control");
+    check(!peri_cam_describe(&pan, desc, 10), "a description that does not fit is refused");
+    char tok[40];
+    check(peri_cam_option_token(3, "Aperture Priority Mode", tok, sizeof tok) && strcmp(tok, "3:Aperture_Priority_Mode") == 0, "option token");
+    check(peri_cam_option_token(1, "60 Hz", tok, sizeof tok) && strcmp(tok, "1:60_Hz") == 0, "option with a number");
+    check(peri_cam_option_token(0, "Wi-Fi: on/off!", tok, sizeof tok) && strcmp(tok, "0:Wi-Fi__on_off_") == 0, "odd characters become underscores");
+    check(!peri_cam_option_token(2, "Aperture Priority Mode", tok, 8), "an option token that does not fit is refused");
+    char all[200];
+    struct peri_cam_ctrl two[2] = { brightness, autowb };
+    check(peri_cam_controls_text(-1, two, 2, all, sizeof all)
+              && strcmp(all, "brightness=int:0:255:1:128:s white_balance_automatic=bool:0:1:1:1:s") == 0,
+          "the controls reply body");
+    check(!peri_cam_controls_text(-1, two, 2, all, 40), "a controls reply that does not fit is refused");
+
     // The status line, and that it refuses to cut a pair in half.
     struct peri_cam_ctrl c[2] = { { .name = "brightness", .value = 128 }, { .name = "pan_absolute", .value = -3600 } };
     char text[64];

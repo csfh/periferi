@@ -291,3 +291,82 @@ int peri_cam_set(int fd, const struct peri_cam_ctrl *c, int64_t value, int64_t *
     *readback = r.value;
     return 0;
 }
+
+bool peri_cam_describe(const struct peri_cam_ctrl *c, char *out, size_t size)
+{
+    const char *type = c->type == V4L2_CTRL_TYPE_BOOLEAN ? "bool" : c->type == V4L2_CTRL_TYPE_MENU ? "menu" : "int";
+    char flags[4] = "";
+    size_t n = 0;
+    if (peri_cam_settable_id(c->id))
+        flags[n++] = 's';
+    if (peri_cam_inactive(c))
+        flags[n++] = 'i';
+    if (c->flags & V4L2_CTRL_FLAG_READ_ONLY)
+        flags[n++] = 'r';
+    if (n == 0)
+        flags[n++] = '-';
+    flags[n] = '\0';
+    int len = snprintf(out, size, "%s:%lld:%lld:%lld:%lld:%s", type, (long long)c->min, (long long)c->max,
+                       (long long)c->step, (long long)c->value, flags);
+    return len > 0 && (size_t)len < size;
+}
+
+bool peri_cam_option_token(int index, const char *name, char *out, size_t size)
+{
+    int len = snprintf(out, size, "%d:", index);
+    if (len < 0 || (size_t)len >= size)
+        return false;
+    size_t used = (size_t)len;
+    for (const char *p = name; *p; p++) {
+        if (used + 1 >= size)
+            return false;
+        out[used++] = (isalnum((unsigned char)*p) || *p == '-' || *p == '.') ? *p : '_';
+    }
+    out[used] = '\0';
+    return true;
+}
+
+bool peri_cam_options(int fd, const struct peri_cam_ctrl *c, char *out, size_t size)
+{
+    if (size > 0)
+        out[0] = '\0';
+    if (c->type != V4L2_CTRL_TYPE_MENU)
+        return true;
+    size_t used = 0;
+    for (int64_t i = c->min; i <= c->max; i++) {
+        struct v4l2_querymenu m = { .id = c->id, .index = (uint32_t)i };
+        if (peri_cam_ioctl(fd, VIDIOC_QUERYMENU, &m) != 0)
+            continue; // a hole: the camera does not offer this index
+        char token[64];
+        if (!peri_cam_option_token((int)i, (const char *)m.name, token, sizeof token))
+            return false;
+        int n = snprintf(out + used, size - used, "%s%s", used ? "," : "", token);
+        if (n < 0 || (size_t)n >= size - used)
+            return false;
+        used += (size_t)n;
+    }
+    return true;
+}
+
+bool peri_cam_controls_text(int fd, const struct peri_cam_ctrl *ctrls, size_t count, char *out, size_t size)
+{
+    size_t used = 0;
+    if (size > 0)
+        out[0] = '\0';
+    for (size_t i = 0; i < count; i++) {
+        char desc[64], opts[200];
+        if (!peri_cam_describe(&ctrls[i], desc, sizeof desc) || !peri_cam_options(fd, &ctrls[i], opts, sizeof opts))
+            return false;
+        int n = snprintf(out + used, size - used, "%s%s=%s", used ? " " : "", ctrls[i].name, desc);
+        if (n < 0 || (size_t)n >= size - used)
+            return false;
+        used += (size_t)n;
+        if (opts[0]) {
+            n = snprintf(out + used, size - used, " %s.options=%s", ctrls[i].name, opts);
+            if (n < 0 || (size_t)n >= size - used)
+                return false;
+            used += (size_t)n;
+        }
+    }
+    return true;
+}

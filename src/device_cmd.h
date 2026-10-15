@@ -3,11 +3,16 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// Daemon side of "peri status" and "peri set": talk to the device an installed module drives.
+// Daemon side of "peri status", "peri controls" and "peri set": talk to the device an installed module drives.
 // Both reply "ok key=value ..." or "err message", newline ended.
 
 // args: "<module-id>". Read-only.
 void status_handle(const char *args, char *reply, size_t size);
+
+// `controls <module-id>` for a camera (the v4l2 engine): every control it lists with its type, range, step,
+// value and flags, and the options of each menu, in the form peri_cam_describe() gives. A read (control
+// queries only). Any other engine is refused.
+void controls_handle(const char *args, char *reply, size_t size);
 
 // args: "<module-id> get" or "<module-id> set gain=<0-100> monitor=<0-100> monitor_on=<yes|no>
 // headphones=<0-100>" (any of the keys). The microphone's standard USB audio controls, through

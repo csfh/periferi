@@ -979,6 +979,17 @@ static int cmd_rgb(int argc, char **argv)
     return forward(req);
 }
 
+// peri controls <module-id>: a camera's controls with their ranges and menu options (read-only).
+static int cmd_controls(const char *id)
+{
+    char req[96];
+    if (snprintf(req, sizeof req, "controls %s\n", id) >= (int)sizeof req) {
+        fprintf(stderr, "peri: request too long\n");
+        return 2;
+    }
+    return forward(req);
+}
+
 // peri status <module-id>: read what the module's device reports (read-only).
 static int cmd_status(const char *id)
 {
@@ -1218,6 +1229,8 @@ int main(int argc, char **argv)
         return cmd_rgb(argc, argv);
     if (argc == 3 && strcmp(argv[1], "status") == 0)
         return cmd_status(argv[2]);
+    if (argc == 3 && strcmp(argv[1], "controls") == 0)
+        return cmd_controls(argv[2]);
     if (argc >= 3 && strcmp(argv[1], "decode") == 0)
         return cmd_decode(argc, argv);
     if (argc >= 4 && argc <= 8 && strcmp(argv[1], "audio") == 0)
@@ -1227,6 +1240,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }

@@ -186,6 +186,35 @@ static void status_camera(const char *id, const char *node, char *reply, size_t 
     snprintf(reply, size, "ok module=%s %s\n", id, text);
 }
 
+void controls_handle(const char *args, char *reply, size_t size)
+{
+    char id[64];
+    first_word(args, id, sizeof id);
+    char node[32];
+    struct peri_module m;
+    if (!resolve_module(id, &m, node, sizeof node, reply, size))
+        return;
+    if (strcmp(m.engine, "v4l2") != 0) {
+        err(reply, size, "only a camera module has controls to list", id);
+        return;
+    }
+    int fd = peri_cam_open(node);
+    if (fd < 0) {
+        err(reply, size, "cannot open the camera (see `journalctl --user -u perid`)", id);
+        return;
+    }
+    struct peri_cam_ctrl ctrls[64];
+    size_t count = peri_cam_list(fd, ctrls, 64);
+    char text[900];
+    bool fits = count > 0 && peri_cam_controls_text(fd, ctrls, count, text, sizeof text);
+    close(fd);
+    if (!fits) {
+        err(reply, size, count == 0 ? "the camera listed no controls" : "the camera's controls do not fit in one reply", id);
+        return;
+    }
+    snprintf(reply, size, "ok module=%s %s\n", m.id, text);
+}
+
 void status_handle(const char *args, char *reply, size_t size)
 {
     char id[64];
