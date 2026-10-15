@@ -57,6 +57,24 @@ function parseSet(text) {
   return { ok: true, dpi: parseDpi(rb), poll: /^\d+$/.test(rb) ? Number(rb) : 0 }
 }
 
+// What the pane draws: the status with what the user just chose laid over it (`shown`: "dpi" -> n, "poll" -> n)
+// until the device has been read again, so a slider or a button never lags behind the click or snaps back.
+function overlay(s, shown) {
+  if (!s.online || !shown) return s
+  var out = Object.assign({}, s)
+  if (Object.prototype.hasOwnProperty.call(shown, "dpi")) out.dpi = { x: shown.dpi, y: shown.dpi }
+  if (Object.prototype.hasOwnProperty.call(shown, "poll")) out.poll = shown.poll
+  return out
+}
+
+// The status with a write's read-back (or, when the device gave none, the value that was sent) put in.
+function patch(s, key, value, readback) {
+  var out = Object.assign({}, s)
+  if (key === "dpi") out.dpi = readback !== null && readback !== undefined ? readback : { x: value, y: value }
+  if (key === "poll") out.poll = readback > 0 ? readback : value
+  return out
+}
+
 function batteryText(s) {
   if (!s.online || s.battery < 0) return "Battery  -"
   var text = "Battery  " + s.batteryPercent + "%"

@@ -24,6 +24,14 @@ TestCase {
     compare(newer.gain, 7)
   }
 
+  function test_omit() {
+    var shown = { dpi: 1600, poll: 500 }
+    var next = Ch.omit(shown, "dpi")
+    compare(Object.keys(next), ["poll"])
+    compare(shown.dpi, 1600)                       // the old object is never changed
+    compare(Object.keys(Ch.omit(shown, "nothing")).length, 2)
+  }
+
   // Only settle when nothing is on its way, or the old value would flash back.
   function test_settle_and_may_read() {
     var shown = { brightness: 160 }

@@ -74,6 +74,31 @@ TestCase {
     compare(Mouse.pollArg(8000), "")
   }
 
+  // The pane draws what the user just chose until the device has been read again.
+  function test_overlay() {
+    var s = Mouse.parseStatus(status)
+    var o = Mouse.overlay(s, { dpi: 1600 })
+    compare(o.dpi.x, 1600); compare(o.dpi.y, 1600); compare(o.poll, 1000)
+    compare(s.dpi.x, 800)                                  // the status itself is never changed
+    compare(Mouse.dpiSelected(1600, o), true)
+    compare(Mouse.dpiSelected(800, o), false)
+    compare(Mouse.overlay(s, { poll: 500 }).poll, 500)
+    compare(Mouse.pollSelected(500, Mouse.overlay(s, { poll: 500 })), true)
+    compare(Mouse.overlay(s, {}), s)
+    compare(Mouse.overlay(s, null), s)
+    var off = Mouse.parseStatus("")
+    compare(Mouse.overlay(off, { dpi: 1600 }), off)         // offline: nothing to draw over
+  }
+
+  function test_patch_puts_in_the_devices_own_value() {
+    var s = Mouse.parseStatus(status)
+    compare(Mouse.patch(s, "dpi", 1600, { x: 1600, y: 1600 }).dpi.x, 1600)
+    compare(Mouse.patch(s, "dpi", 1600, null).dpi.x, 1600)       // no read-back: the value that was sent
+    compare(Mouse.patch(s, "poll", 500, 500).poll, 500)
+    compare(Mouse.patch(s, "poll", 500, 0).poll, 500)
+    compare(s.poll, 1000)
+  }
+
   function test_parse_set() {
     var r = Mouse.parseSet("module   m\nsent     dpi:1600\nbefore   800:800\ndevice   ok\nreadback 1600:1600\nstored   maybe\n")
     compare(r.ok, true)

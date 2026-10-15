@@ -1,0 +1,20 @@
+#!/bin/sh
+# A fake peri for tests/qml/mouse-scenario: keeps its state in $FAKE_DIR/state, logs every call to
+# $FAKE_DIR/calls, takes a moment, and refuses `poll=125`. Never touches a device, never runs the real peri.
+S="$FAKE_DIR/state"
+[ -f "$S" ] || printf 'dpi=3200\npoll=1000\n' > "$S"
+get() { sed -n "s/^$1=//p" "$S"; }
+echo "$(date +%s.%N | cut -c1-14) $*" >> "$FAKE_DIR/calls"
+case "$1" in
+  status)
+    sleep 0.15
+    printf 'module   %s\nfirmware 0200\nbattery  100\ncharging no\ndpi      %s:%s\npoll     %s\n' "$2" "$(get dpi)" "$(get dpi)" "$(get poll)" ;;
+  set)
+    name=${3%%=*}; value=${3#*=}
+    sleep 0.3
+    if [ "$name" = poll ] && [ "$value" = 125 ]; then echo "$2: poll cannot be changed right now" >&2; exit 1; fi
+    sed -i "s/^$name=.*/$name=$value/" "$S"
+    if [ "$name" = dpi ]; then rb="$value:$value"; else rb="$value"; fi
+    printf 'module   %s\nsent     %s:%s\nbefore   0\ndevice   ok\nreadback %s\nstored   maybe\n' "$2" "$name" "$value" "$rb" ;;
+  *) echo "fake peri: refused: $*" >&2; exit 1 ;;
+esac

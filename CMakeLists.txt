@@ -92,6 +92,8 @@ if(QUICKSHELL)
   add_test(NAME camera_pane_scenario COMMAND ${CMAKE_SOURCE_DIR}/tests/qml/camera-scenario/run.sh)
   # About 20 s: `ctest -LE scenario` skips it, `ctest -L scenario` runs only it.
   set_tests_properties(camera_pane_scenario PROPERTIES LABELS scenario TIMEOUT 120)
+  add_test(NAME mouse_pane_scenario COMMAND ${CMAKE_SOURCE_DIR}/tests/qml/mouse-scenario/run.sh)
+  set_tests_properties(mouse_pane_scenario PROPERTIES LABELS scenario TIMEOUT 120)
 else()
   message(WARNING "quickshell not found: the camera pane scenario is skipped")
 endif()

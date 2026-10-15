@@ -26,6 +26,13 @@ function choose(shown, key, v) {
   return next
 }
 
+// A new `shown` without this key (the choice is no longer needed, or the write failed and the truth is drawn).
+function omit(shown, key) {
+  var next = Object.assign({}, shown)
+  delete next[key]
+  return next
+}
+
 // When the device has been read again: the choices it now reflects can go, but only if nothing is still on its
 // way (a queued or running write, or a slider being held); otherwise the old value would flash back.
 function settle(shown, queueLength, busy) {
