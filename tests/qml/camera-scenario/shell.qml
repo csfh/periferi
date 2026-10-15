@@ -71,8 +71,7 @@ ShellRoot {
 
     // Two DIFFERENT sliders chosen 100 ms apart: both must be written, in order (one queue entry per control).
     step(6000,  function() { mark("two-sliders") })
-    step(6200,  function() { cam.chooseValue("brightness", 150) })
-    step(6300,  function() { cam.chooseValue("saturation", 200); log("6-two-chosen") })
+    step(6200,  function() { cam.chooseValue("brightness", 150); cam.chooseValue("saturation", 200); log("6-two-chosen") })
     step(8500,  function() { log("7-both-sliders-applied") })
 
     // A write the camera refuses: the error stays visible, and the pane goes back to what is true.

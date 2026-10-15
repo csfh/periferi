@@ -31,6 +31,11 @@ ShellRoot {
     p.command = ["sh", "-c", "echo MARK " + text + " >> \"$FAKE_DIR/calls\""]
     p.running = true
   }
+  function gate(on, name) {
+    var p = Qt.createQmlObject('import Quickshell.Io; Process { }', root, "gate")
+    p.command = ["sh", "-c", (on ? "touch" : "rm -f") + " \"$FAKE_DIR/gate." + name + "\""]
+    p.running = true
+  }
   function gates(on) {
     var p = Qt.createQmlObject('import Quickshell.Io; Process { }', root, "gate")
     p.command = ["sh", "-c", (on ? "touch" : "rm -f") + " \"$FAKE_DIR/gate.lookread\" \"$FAKE_DIR/gate.audioread\""]
@@ -61,26 +66,29 @@ ShellRoot {
 
     // A save the daemon refuses must not throw away the newer save queued behind it, and afterwards the pane
     // reads what is really saved.
+    // The fake holds the refused save in flight (gate) until the newer one has been chosen: no timing window.
     step(5200,  function() { mark("failure") })
-    step(5400,  function() { mic.chooseBrightness(39) })     // 99/255: the fake refuses it
-    step(5450,  function() { mic.selectLook("muted") })
-    step(5500,  function() { mic.chooseBrightness(10) })
-    step(7500,  function() { log("6-after-the-refused-save") })
+    step(5300,  function() { gate(true, "write") })
+    step(5500,  function() { mic.chooseBrightness(39) })     // 99/255: the fake refuses it
+    step(5550,  function() { mic.selectLook("muted") })
+    step(5600,  function() { mic.chooseBrightness(10) })
+    step(5900,  function() { gate(false, "write") })
+    step(7600,  function() { log("6-after-the-refused-save") })
 
     // Follow mute clicked twice while the first is still being saved: the second is not dropped.
-    step(7700,  function() { mark("follow") })
-    step(7900,  function() { mic.setFollow(false) })
-    step(8000,  function() { mic.setFollow(true); log("7-follow-clicked-twice") })
-    step(9200,  function() { log("8-follow-answered") })
+    step(7800,  function() { mark("follow") })
+    step(8000,  function() { mic.setFollow(false) })
+    step(8100,  function() { mic.setFollow(true); log("7-follow-clicked-twice") })
+    step(9300,  function() { log("8-follow-answered") })
 
     // Reads that began before a save and an audio change, and finish after them, must not overwrite them.
-    step(9400,  function() { mark("races") })
-    step(9600,  function() { gates(true) })
-    step(9800,  function() { mic.refresh("held reads") })
-    step(10100, function() { mic.chooseBrightness(50) })     // saves the Muted look (the one being edited)
-    step(10200, function() { mic.chooseAudio("gain", 40) })
-    step(11500, function() { log("9-changed-while-reads-in-flight"); gates(false) })
-    step(12300, function() { log("10-after-the-stale-reads-finished (must still show the changes)") })
-    step(12500, function() { console.log("SCN done"); Qt.quit() })
+    step(9500,  function() { mark("races") })
+    step(9700,  function() { gates(true) })
+    step(9900,  function() { mic.refresh("held reads") })
+    step(10200, function() { mic.chooseBrightness(50) })     // saves the Muted look (the one being edited)
+    step(10300, function() { mic.chooseAudio("gain", 40) })
+    step(11600, function() { log("9-changed-while-reads-in-flight"); gates(false) })
+    step(12400, function() { log("10-after-the-stale-reads-finished (must still show the changes)") })
+    step(12600, function() { console.log("SCN done"); Qt.quit() })
   }
 }

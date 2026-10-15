@@ -45,8 +45,7 @@ ShellRoot {
 
     // A DPI choice and, 100 ms later, a poll-rate click: both written (the poll click is due first), none dropped.
     step(3500,  function() { mark("two") })
-    step(3700,  function() { mouse.chooseDpi(800) })
-    step(3800,  function() { mouse.choosePoll(500); log("4-two-chosen") })
+    step(3700,  function() { mouse.chooseDpi(800); mouse.choosePoll(500); log("4-two-chosen") })   // one step: only their delays decide the order
     step(6200,  function() { log("5-both-written") })
 
     // A poll rate the mouse refuses: the error shows, and the pane draws what is true again.
@@ -56,8 +55,7 @@ ShellRoot {
 
     // The same slider chosen twice quickly: one write, with the last value.
     step(8100,  function() { mark("replace") })
-    step(8300,  function() { mouse.chooseDpi(1000) })
-    step(8400,  function() { mouse.chooseDpi(1200) })
+    step(8300,  function() { mouse.chooseDpi(1000); mouse.chooseDpi(1200) })                       // one step: no window to slip out of
     step(9700,  function() { log("7-after-replace") })
 
     // Back to the value the mouse already has: nothing is written. An explicit refresh then reads it.

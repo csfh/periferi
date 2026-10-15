@@ -17,7 +17,7 @@ case "$1" in
     case "$3" in
       get) snapshot=$(look "$2" "$4"); gate lookread; sleep 0.1; printf '%s\n' "$snapshot" ;;
       save)
-        mod=$2; which=$4; shift 4; sleep 0.3
+        mod=$2; which=$4; shift 4; gate write; sleep 0.3
         for kv in "$@"; do
           k=${kv%%=*}; v=${kv#*=}
           if [ "$k" = brightness ] && [ "$v" = 99 ]; then echo "the look could not be saved: brightness 99 is refused" >&2; exit 1; fi

@@ -17,6 +17,7 @@ case "$2" in
   effects) printf 'effects  solid_color,breathing\n' ;;
   set)
     shift 2
+    gate write
     sleep 0.3
     for kv in "$@"; do
       k=${kv%%=*}; v=${kv#*=}
