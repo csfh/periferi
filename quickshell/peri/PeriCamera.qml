@@ -21,10 +21,10 @@ Scope {
   property string periPath: Quickshell.env("HOME") + "/.local/bin/peri"
   property string moduleId: ""
 
-  // Off until the first writes of each kind of control have been tried on the real camera (brightness,
-  // an integer, has; switches, menus and the stepped pan and tilt have not). While false nothing is sent,
-  // and the pane shows its controls as unavailable.
-  property bool writable: false
+  // On since every kind of control was tried by hand on the real camera (2026-10-15): an integer
+  // (brightness, zoom), the stepped pan and tilt, a switch (auto white balance), a menu (exposure mode)
+  // and the field of view. Set it false and nothing is sent: the pane shows its controls as unavailable.
+  property bool writable: true
 
   readonly property bool online: state.s.online
   readonly property var controls: state.s.controls
