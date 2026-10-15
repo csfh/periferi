@@ -36,6 +36,15 @@ int main(void)
     CHECK(strstr(out, "Evil") == nullptr && strstr(out, "injected") == nullptr
           && strstr(out, "m-359b") == nullptr);
 
+    // A camera (the v4l2 engine) needs no hidraw rule: its video node's access comes from the system,
+    // and the HID interface its module is anchored on is only there to identify the device.
+    struct peri_module cam = mod(0x046d, 0x085e);
+    snprintf(cam.engine, sizeof cam.engine, "v4l2");
+    CHECK(!peri_udev_needs_rule(&cam) && peri_udev_needs_rule(&ctrl));
+    struct peri_module mixed[] = { cam, ctrl };
+    len = peri_udev_rules(mixed, 2, out, sizeof out);
+    CHECK(len > 0 && strstr(out, ctrl_line) != nullptr && strstr(out, "046d") == nullptr);
+
     // Lowercase hex, sorted by vid:pid, each pair once, regardless of input order.
     struct peri_module many[] = { mod(0xABCD, 2), mod(0x1532, 0x56F), mod(0x359b, 9), mod(0x1532, 0x56F),
                                   mod(0x1532, 0x00C3) };

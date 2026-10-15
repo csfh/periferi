@@ -10,7 +10,7 @@ struct peri_module {
     char id[49];       // [a-z0-9-], equals the module's directory name
     char name[65];
     char version[33];
-    char engine[16];   // "xap", "razer" or "razer90"
+    char engine[16];   // "xap", "razer", "razer90" or "v4l2"
     uint16_t vid, pid;
     bool has_usage;    // usage_page and usage given: the match picks one interface
     uint16_t usage_page, usage;

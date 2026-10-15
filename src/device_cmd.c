@@ -13,6 +13,7 @@
 #include "audio.h"
 #include "controls.h"
 #include "module.h"
+#include "camera.h"
 #include "razer90_dev.h"
 #include "razer_dev.h"
 #include "scan.h"
@@ -163,6 +164,26 @@ static void status_razer90(const char *id, const char *node, char *reply, size_t
              bat, chg, dp, pr);
 }
 
+// A camera's status: the current value of every control it lists, by the names `v4l2-ctl` shows.
+// Reads only (control queries), and the video nodes are never asked to stream.
+static void status_camera(const char *id, const char *node, char *reply, size_t size)
+{
+    int fd = peri_cam_open(node);
+    if (fd < 0) {
+        err(reply, size, "cannot open the camera (see `journalctl --user -u perid`)", id);
+        return;
+    }
+    struct peri_cam_ctrl ctrls[64];
+    size_t count = peri_cam_list(fd, ctrls, 64);
+    close(fd);
+    char text[768];
+    if (count == 0 || !peri_cam_status_text(ctrls, count, text, sizeof text)) {
+        err(reply, size, count == 0 ? "the camera listed no controls" : "the camera's controls do not fit in one reply", id);
+        return;
+    }
+    snprintf(reply, size, "ok module=%s %s\n", id, text);
+}
+
 void status_handle(const char *args, char *reply, size_t size)
 {
     char id[64];
@@ -174,6 +195,10 @@ void status_handle(const char *args, char *reply, size_t size)
         return;
     if (strcmp(m.engine, "razer90") == 0) {
         status_razer90(m.id, node, reply, size);
+        return;
+    }
+    if (strcmp(m.engine, "v4l2") == 0) {
+        status_camera(m.id, node, reply, size);
         return;
     }
     int fd = open_razer(&m, node, reply, size);

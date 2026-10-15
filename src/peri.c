@@ -812,7 +812,7 @@ struct mod_row { // one module, as reported by perid's "modules"
     unsigned vid, pid;
 };
 
-// [{"id":..., "name":..., "version":..., "engine":"xap|razer|razer90", "vid":"359b", "pid":"0009",
+// [{"id":..., "name":..., "version":..., "engine":"xap|razer|razer90|v4l2", "vid":"359b", "pid":"0009",
 //   "status":"installed|available", "access":"ok|setup"|null}]
 // access: "setup" means `peri setup` has to update the udev rule for this module's device.
 // engine: which built-in protocol drives the device, so a UI can tell a keyboard from a microphone.

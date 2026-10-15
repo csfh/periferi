@@ -109,7 +109,8 @@ static void send_modules(int client)
         if (!from_catalog && has_module(catalog, catalog_count, m->id))
             continue;
         bool is_installed = has_module(installed, installed_count, m->id);
-        const char *access = !is_installed ? "-" : rules && peri_udev_covers(rules, m) ? "ok" : "setup";
+        const char *access = !is_installed ? "-"
+                             : !peri_udev_needs_rule(m) || (rules && peri_udev_covers(rules, m)) ? "ok" : "setup";
         int n = snprintf(buf + len, sizeof buf - len, "%s %s %s %s %04x:%04x %s %s\n", m->id,
                          is_installed ? "installed" : "available", access, m->engine, m->vid,
                          m->pid, m->version, m->name);
@@ -199,7 +200,7 @@ static void handle(int client)
         return;
     }
     if (strncmp(req, "status ", 7) == 0 || strncmp(req, "set ", 4) == 0) {
-        char reply[256];
+        char reply[1024]; // a camera's status lists every control
         if (req[0] == 's' && req[1] == 't')
             status_handle(req + 7, reply, sizeof reply);
         else

@@ -85,7 +85,7 @@ static bool parse_fields(toml_datum_t top, struct peri_module *m, char *err, siz
     if (!peri_module_id_valid(m->id))
         return fail(err, err_size, "'id' must be lowercase letters, digits and '-'");
     if (strcmp(m->engine, "xap") != 0 && strcmp(m->engine, "razer") != 0
-        && strcmp(m->engine, "razer90") != 0)
+        && strcmp(m->engine, "razer90") != 0 && strcmp(m->engine, "v4l2") != 0)
         return fail(err, err_size, "unknown engine '%s'", m->engine);
 
     bool present, has_page, has_usage;

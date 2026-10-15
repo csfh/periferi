@@ -1,0 +1,22 @@
+# peri module: Logitech BRIO webcam (UVC), controlled through V4L2 (the "v4l2" engine). The file
+# format is described in catalog/drop-ctrl-v2/module.toml.
+#
+# The camera's controls are on its video nodes, not on HID. The match below names the BRIO's one HID
+# interface (consumer control, 000c:0001) only to IDENTIFY the device; the daemon then finds that
+# USB device's capture node through sysfs, so no /dev/video number appears here. The engine sends
+# control queries and control reads only: it never starts streaming and never reads a frame. The
+# system already grants the logged-in user the video nodes, so no udev rule is installed for it.
+#
+# No capabilities: nothing here is lighting.
+
+schema = 1
+id = "logitech-brio"
+name = "Logitech BRIO"
+version = "0.1.0"
+engine = "v4l2"
+
+[match]
+vid = 0x046d
+pid = 0x085e
+usage_page = 0x000c
+usage = 0x0001

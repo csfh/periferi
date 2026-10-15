@@ -20,12 +20,18 @@ static int by_key(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
+bool peri_udev_needs_rule(const struct peri_module *m)
+{
+    return strcmp(m->engine, "v4l2") != 0;
+}
+
 size_t peri_udev_rules(const struct peri_module *mods, size_t count, char *out, size_t size)
 {
     uint32_t keys[64];
     size_t n = 0;
     for (size_t i = 0; i < count && n < 64; i++)
-        keys[n++] = (uint32_t)mods[i].vid << 16 | mods[i].pid;
+        if (peri_udev_needs_rule(&mods[i]))
+            keys[n++] = (uint32_t)mods[i].vid << 16 | mods[i].pid;
     qsort(keys, n, sizeof *keys, by_key);
 
     int len = snprintf(out, size,
