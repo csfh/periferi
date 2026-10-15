@@ -6,8 +6,9 @@
 
 // The V4L2 engine: a webcam's controls (brightness, exposure, focus, zoom ...) through the kernel's
 // V4L2 control ioctls. It never streams: every ioctl goes through peri_cam_ioctl(), which refuses
-// anything not on a short allowlist of control queries, so the camera can never be told to start
-// capturing, to set a format or to hand over a frame (a test checks the list). Nothing here reads
+// anything not on a short allowlist (control queries, control reads, one control write limited to a fixed
+// list of standard controls), so the camera can never be told to start capturing, to set a format or to
+// hand over a frame (a test checks the list). Nothing here reads
 // or writes video data.
 
 // Is this ioctl one the engine may issue? Control queries and reads, and VIDIOC_S_CTRL (one control

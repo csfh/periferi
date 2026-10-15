@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <linux/videodev2.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -339,7 +340,10 @@ static void set_camera(const char *id, char *rest, char *reply, size_t size)
     close(fd);
     if (rc != 0) {
         char text[200];
-        snprintf(text, sizeof text, "the camera did not accept the change: %s", strerror(saved_errno));
+        if (c->type == V4L2_CTRL_TYPE_MENU && saved_errno == EINVAL)
+            snprintf(text, sizeof text, "the camera does not offer that option for %s, and nothing was sent", name);
+        else
+            snprintf(text, sizeof text, "the camera did not accept the change: %s", strerror(saved_errno));
         err(reply, size, text, id);
         return;
     }
