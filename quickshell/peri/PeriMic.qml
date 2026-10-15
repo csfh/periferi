@@ -5,6 +5,7 @@ import "mic.js" as M
 import "lighting.js" as L
 import "cli.js" as Cli
 import "debug.js" as D
+import "choices.js" as Ch
 
 // A microphone (the Razer Seiren V3 Chroma) as seen by the peri daemon. Like PeriLighting it
 // imports nothing from the host shell and draws nothing; hosts bind to the properties below.
@@ -37,12 +38,14 @@ Scope {
     return (base ? base : Quickshell.env("HOME") + "/.local/state") + "/peri/pane-debug.txt"
   }
 
+  // The two saved looks (tests and debugging).
+  readonly property var savedLooks: state.looks
   readonly property bool online: state.online
   readonly property var look: state.looks[root.editing]   // { effect, color, brightness } being edited
   readonly property int deviceBrightness: state.deviceBrightness // the mic's own, 0-255
   // Apply waits for any save to reach the daemon, so it can never send an older look than the one shown.
   readonly property bool canApply: state.online && M.canApply(root.look) && !applier.running
-                                   && !saver.running && state.pending === null
+                                   && !saver.running && state.pending.length === 0
   readonly property bool follow: state.follow   // the daemon applies the matching look when the mic is (un)muted
   readonly property bool busy: applier.running
   readonly property string notice: state.notice  // what the last apply sent, or ""
@@ -114,10 +117,20 @@ Scope {
     }
     dbg("REFRESH", "reading the mic's state, both saved looks and the audio levels (" + (why || "requested") + ")")
     state.notice = ""
+    // What had been saved or changed when these reads began: a read that finishes after a later save or audio
+    // change is older than it, and is dropped (see the handlers below).
     if (!status.running) status.running = true
-    if (!getUnmuted.running) getUnmuted.running = true
-    if (!getMuted.running) getMuted.running = true
-    if (!audioGet.running) audioGet.running = true
+    // The look reads are stamped when they START, and only when neither is still running: restamping a read
+    // that is already on its way would let it pass for newer than the saves made since it began.
+    if (!getUnmuted.running && !getMuted.running) {
+      state.readGen = state.saveGen
+      getUnmuted.running = true
+      getMuted.running = true
+    }
+    if (!audioGet.running) {
+      state.audioReadGen = state.audioGen
+      audioGet.running = true
+    }
   }
 
   function selectLook(which) {
@@ -179,6 +192,7 @@ Scope {
     }
     dbg("AUDIO", "will set " + setting + " (a live sound-card level, not stored by peri)")
     state.audio = M.withAudio(state.audio, key, value) // shown at once
+    state.audioGen++
     state.audioError = ""
     var pending = state.pendingAudio
     pending[key] = setting
@@ -196,15 +210,26 @@ Scope {
     audioSetter.running = true
   }
 
-  // Turn following the mute state on or off (the daemon keeps it with the looks; a file, not the mic).
+  // Turn following the mute state on or off (the daemon keeps it with the looks; a file, not the mic). Shown at
+  // once. If the previous change is still being saved this one waits its turn (the last one wins): it is never
+  // dropped.
   function setFollow(on) {
     dbg("GESTURE", "Follow mute button pressed: turning it " + (on ? "on" : "off"))
-    if (root.moduleId === "" || follower.running) {
-      dbg("IGNORED", "no module is selected, or the previous change is still being saved")
+    if (root.moduleId === "") {
+      dbg("IGNORED", "no module is selected")
       return
     }
     dbg("FOLLOW", "following the mute state " + (on ? "on: the daemon applies the matching look after each mute change" : "off: only Apply sends a look"))
     state.follow = on // shown at once; the daemon's answer confirms it
+    if (follower.running) {
+      state.pendingFollow = on
+      dbg("FOLLOW", "the previous change is still being saved: this one goes next")
+      return
+    }
+    sendFollow(on)
+  }
+
+  function sendFollow(on) {
     follower.command = Cli.command(root.periPath, ["look", root.moduleId, "follow", on ? "on" : "off"])
     follower.running = true
   }
@@ -228,6 +253,9 @@ Scope {
     applier.running = true
   }
 
+  // Save one look. The look is drawn at once. Each look has its own queue entry (the last save of a look wins), so
+  // editing the Unmuted look and then the Muted look in quick succession saves both: a save for one look never
+  // replaces another's.
   function saveLook(which, look) {
     if (root.moduleId === "") return
     dbg("SAVE", "the " + which + " look is now: " + D.describeLook(look) + " (a file only; the microphone is not touched)")
@@ -235,17 +263,19 @@ Scope {
     looks[which] = look
     state.looks = looks // shown at once; the daemon's answer confirms it or puts it back
     state.error = ""
-    state.pending = { which: which, look: look }
+    state.saveGen++
+    state.pending = Ch.enqueue(state.pending, which, look, 0)
     if (!saver.running) sendPending()
   }
 
   function sendPending() {
-    var p = state.pending
-    if (p === null) return
-    dbg("SAVE", "sending the " + p.which + " look to the daemon to be saved")
-    state.pending = null
-    saver.which = p.which
-    saver.command = Cli.command(root.periPath, ["look", root.moduleId].concat(M.saveArgs(p.which, p.look)))
+    var hit = Ch.dequeue(state.pending, Date.now())
+    if (hit === null) return
+    var p = hit.entry
+    dbg("SAVE", "sending the " + p.name + " look to the daemon to be saved")
+    state.pending = hit.rest
+    saver.which = p.name
+    saver.command = Cli.command(root.periPath, ["look", root.moduleId].concat(M.saveArgs(p.name, p.value)))
     saver.running = true
   }
 
@@ -254,7 +284,13 @@ Scope {
     property bool online: false
     property int deviceBrightness: 0
     property var looks: ({ unmuted: M.emptyLook(), muted: M.emptyLook() })
-    property var pending: null      // the newest save waiting for the one in flight: last one wins
+    property var pending: []        // saves waiting for the one in flight: [{ name: which, value: look, due }], one per look
+    property int saveGen: 0         // counts the saves chosen; a look read that began before the latest is stale
+    property int readGen: 0
+    property bool saveFailed: false // a save was refused: read the truth once the queue is empty
+    property int audioGen: 0        // the same for audio changes
+    property int audioReadGen: 0
+    property var pendingFollow: null // a Follow mute change waiting for the one in flight: last one wins
     property bool follow: true
     property bool debug: false
     property var queue: []              // debug lines waiting for the log writer
@@ -301,8 +337,8 @@ Scope {
         var look = M.parseLook(this.text)
         var follow = M.parseFollow(this.text)
         root.traceText("OUT", "look get unmuted", this.text)
-        if (follow !== null && !follower.running) state.follow = follow
-        if (look !== null && !saver.running && state.pending === null) {
+        if (follow !== null && !follower.running && state.pendingFollow === null) state.follow = follow
+        if (look !== null && !saver.running && state.pending.length === 0 && state.readGen === state.saveGen) {
           root.dbg("STATE", "unmuted look read from the daemon: " + D.describeLook(look) + ", follow mute " + (follow ? "on" : "off"))
           root.setLook("unmuted", look)
         } else {
@@ -320,7 +356,7 @@ Scope {
       onStreamFinished: {
         var look = M.parseLook(this.text)
         root.traceText("OUT", "look get muted", this.text)
-        if (look !== null && !saver.running && state.pending === null) {
+        if (look !== null && !saver.running && state.pending.length === 0 && state.readGen === state.saveGen) {
           root.dbg("STATE", "muted look read from the daemon: " + D.describeLook(look))
           root.setLook("muted", look)
         } else {
@@ -339,7 +375,7 @@ Scope {
       onStreamFinished: {
         var follow = M.parseFollow(this.text)
         root.traceText("OUT", "follow", this.text)
-        if (follow !== null) state.follow = follow
+        if (follow !== null && state.pendingFollow === null) state.follow = follow
       }
     }
     stderr: StdioCollector {
@@ -348,8 +384,12 @@ Scope {
     onRunningChanged: root.traceRun("follower", follower)
     onExited: function(exitCode) {
       root.traceExit("follower", exitCode)
-      if (exitCode !== 0) {
-        state.error = state.errText || "the setting could not be saved"
+      if (exitCode !== 0) state.error = state.errText || "the setting could not be saved"
+      if (state.pendingFollow !== null) { // the user changed it again meanwhile: that is what they want
+        var next = state.pendingFollow
+        state.pendingFollow = null
+        root.sendFollow(next)
+      } else if (exitCode !== 0) {
         root.refresh()
       }
     }
@@ -366,7 +406,9 @@ Scope {
         var which = L.parseValues(this.text).look
         var look = M.parseLook(this.text)
         root.traceText("OUT", "save", this.text)
-        if (look !== null && (which === "unmuted" || which === "muted") && state.pending === null) {
+        // Only if no newer save of the SAME look is waiting (it would flicker back and forth).
+        if (look !== null && (which === "unmuted" || which === "muted")
+            && Ch.drop(state.pending, which).length === state.pending.length) {
           root.dbg("STATE", "the daemon saved the " + which + " look as: " + D.describeLook(look))
           root.setLook(which, look)
         }
@@ -380,10 +422,15 @@ Scope {
       root.traceExit("saver", exitCode)
       if (exitCode !== 0) {
         state.error = state.errText || "the look could not be saved"
-        state.pending = null
-        root.refresh()
-      } else if (state.pending !== null) {
+        state.saveFailed = true
+      }
+      // The next save goes on whatever happened to this one: a refused save never throws away a newer one.
+      // Once the queue is empty, after a refusal, the pane reads what is really saved.
+      if (state.pending.length > 0) {
         root.sendPending()
+      } else if (state.saveFailed) {
+        state.saveFailed = false
+        root.refresh()
       }
     }
   }
@@ -420,8 +467,8 @@ Scope {
       onStreamFinished: {
         var a = M.parseAudio(this.text)
         root.traceText("OUT", "audio get", this.text)
-        if (audioSetter.running || Object.keys(state.pendingAudio).length > 0) {
-          root.dbg("IGNORED", "the audio levels read were not used: a change is in flight")
+        if (audioSetter.running || Object.keys(state.pendingAudio).length > 0 || state.audioReadGen !== state.audioGen) {
+          root.dbg("IGNORED", "the audio levels read were not used: a change is in flight, or was made after this read began")
           return
         }
         state.audio = a !== null ? a : M.emptyAudio()
@@ -451,6 +498,7 @@ Scope {
       if (exitCode !== 0) {
         state.audioError = state.errText || "the sound card did not accept the change"
         state.pendingAudio = {}
+        state.audioReadGen = state.audioGen
         if (!audioGet.running) audioGet.running = true
       } else if (Object.keys(state.pendingAudio).length > 0) {
         root.sendAudio()

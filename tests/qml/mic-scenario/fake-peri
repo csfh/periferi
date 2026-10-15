@@ -1,0 +1,37 @@
+#!/bin/sh
+# A fake peri for tests/qml/mic-scenario: keeps a microphone's saved looks, follow setting and sound-card levels in
+# $FAKE_DIR/state, logs every call to $FAKE_DIR/calls, takes a moment to write, can hold a look read or an audio read
+# in flight behind a gate file (its answer is fixed BEFORE the gate, so a held read is stale), and refuses
+# `brightness=99`. Never touches a device, never runs the real peri.
+S="$FAKE_DIR/state"
+[ -f "$S" ] || printf 'unmuted_effect=static\nunmuted_color=0000ff\nunmuted_brightness=100\nmuted_effect=static\nmuted_color=ff0000\nmuted_brightness=26\nfollow=yes\ngain=65\nmonitor=86\nmonitor_on=no\nheadphones=77\n' > "$S"
+get() { sed -n "s/^$1=//p" "$S"; }
+put() { if grep -q "^$1=" "$S"; then sed -i "s/^$1=.*/$1=$2/" "$S"; else echo "$1=$2" >> "$S"; fi; }
+echo "$(date +%s.%N | cut -c1-14) $*" >> "$FAKE_DIR/calls"
+gate() { n=0; while [ -f "$FAKE_DIR/gate.$1" ] && [ $n -lt 200 ]; do sleep 0.05; n=$((n + 1)); done; }
+look() { printf 'module   %s\nlook     %s\neffect   %s\ncolor    %s\ncolor2   none\nspeed    default\nbrightness %s\nfollow   %s\n' "$1" "$2" "$(get $2_effect)" "$(get $2_color)" "$(get $2_brightness)" "$(get follow)"; }
+audio() { printf 'module   %s\ngain     %s\nmonitor  %s\nmonitor_on %s\nheadphones %s\n' "$1" "$(get gain)" "$(get monitor)" "$(get monitor_on)" "$(get headphones)"; }
+case "$1" in
+  status) printf 'module   %s\nfirmware 0101\nbrightness 102\nmute     unknown\ndial     unknown\n' "$2" ;;
+  look)
+    case "$3" in
+      get) snapshot=$(look "$2" "$4"); gate lookread; sleep 0.1; printf '%s\n' "$snapshot" ;;
+      save)
+        mod=$2; which=$4; shift 4; sleep 0.3
+        for kv in "$@"; do
+          k=${kv%%=*}; v=${kv#*=}
+          if [ "$k" = brightness ] && [ "$v" = 99 ]; then echo "the look could not be saved: brightness 99 is refused" >&2; exit 1; fi
+          put "${which}_$k" "$v"
+        done
+        look "$mod" "$which" ;;
+      follow) sleep 0.3; if [ "$4" = on ]; then put follow yes; else put follow no; fi; printf 'module   %s\nfollow   %s\n' "$2" "$(get follow)" ;;
+      *) echo "fake peri: refused: $*" >&2; exit 1 ;;
+    esac ;;
+  audio)
+    case "$3" in
+      get) snapshot=$(audio "$2"); gate audioread; sleep 0.1; printf '%s\n' "$snapshot" ;;
+      set) mod=$2; shift 3; sleep 0.3; for kv in "$@"; do put "${kv%%=*}" "${kv#*=}"; done; audio "$mod" ;;
+      *) echo "fake peri: refused: $*" >&2; exit 1 ;;
+    esac ;;
+  *) echo "fake peri: refused: $*" >&2; exit 1 ;;
+esac
