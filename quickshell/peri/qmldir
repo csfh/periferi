@@ -2,3 +2,4 @@ PeriLighting PeriLighting.qml
 PeriDevices PeriDevices.qml
 PeriMic PeriMic.qml
 PeriMouse PeriMouse.qml
+PeriCamera PeriCamera.qml

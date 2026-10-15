@@ -18,6 +18,7 @@ Panel {
   PeriLighting { id: lightingState }
   PeriMic { id: micState }
   PeriMouse { id: mouseState }
+  PeriCamera { id: cameraState }
   PeriDevices { id: devicesState }
 
   BarIconButton {
@@ -69,6 +70,7 @@ Panel {
         light: lightingState
         mic: micState
         mouse: mouseState
+        camera: cameraState
         open: root.opened
         devs: devicesState
         bar: root.bar

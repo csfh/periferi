@@ -13,6 +13,7 @@ Item {
   required property var light
   required property var mic
   property var mouse: null          // PeriMouse, for a mouse; hosts without one leave it out
+  property var camera: null         // PeriCamera, for a webcam; hosts without one leave it out
   required property var devs
   property QtObject bar: null
   property bool open: true          // whether the panel is showing; the mic is only polled while it is
@@ -268,6 +269,7 @@ Item {
       visible: content.selected !== null && content.selected.connected
                && !Menu.drivesKeyboard(content.selected) && content.selected.engine !== "razer"
                && !(content.selected.engine === "razer90" && content.mouse !== null)
+               && !(content.selected.engine === "v4l2" && content.camera !== null)
       text: "This device has no controls in the panel yet. In a terminal, `peri status " + (content.selected ? content.selected.module : "") + "` reads it."
     }
 
@@ -289,6 +291,16 @@ Item {
       active: content.open
       bar: content.bar
       moduleId: content.selected && content.selected.engine === "razer90" ? content.selected.module : ""
+    }
+
+    CameraControls {
+      visible: content.selected !== null && content.selected.connected
+               && content.selected.engine === "v4l2" && content.camera !== null
+      width: parent.width
+      peri: content.camera
+      active: content.open
+      bar: content.bar
+      moduleId: content.selected && content.selected.engine === "v4l2" ? content.selected.module : ""
     }
 
     LightingControls {
