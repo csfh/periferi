@@ -8,6 +8,7 @@ A daemon (`perid`) owns the devices and speaks to them; the CLI (`peri`) and the
 |--------|--------|------------|
 | Drop CTRL v2 keyboard | QMK XAP | RGB effect, colour, speed, brightness (capped by the board's own limit), LED groups |
 | Razer Seiren V3 Chroma microphone | Razer vendor reports (reverse engineered) | Effects (colour, breathing, spectrum, wave, off), brightness, two saved looks that follow the mic's mute state, its mute and dial reports, and the sound card's gain, monitor and headphone levels |
+| Razer DeathAdder V3 Pro mouse | Razer long vendor frame (public references, checked on the device) | Reads firmware, battery, charging, DPI and poll rate; sets DPI and poll rate (125, 500 or 1000 Hz). No lighting on this model |
 
 periferi is unofficial and not affiliated with Drop, Razer or QMK. The Seiren's protocol is not published: what is here was worked out from public sources and by watching the device, and some Synapse settings (the mute light colour, tap remapping, the audio effects) are not supported. Writes to a device may be kept in its own memory. The microphone's saved looks are sent by `peri look apply`, by the panel's Apply button and, unless you turn it off with `peri look <module> follow off`, whenever the mic's mute state changes. The project's tests never touch hardware.
 

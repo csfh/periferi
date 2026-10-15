@@ -20,9 +20,9 @@ Scope {
   property string periPath: Quickshell.env("HOME") + "/.local/bin/peri"
   property string moduleId: ""
 
-  // Off until a DPI and a poll-rate set have been seen working on the real mouse: while it is
-  // false, no choose*() call sends anything, and the pane shows its controls as unavailable.
-  property bool writable: false
+  // Both sets were seen working on the real mouse (2026-10-14, read back from the device). Set
+  // this false and no choose*() call sends anything: the pane shows its controls as unavailable.
+  property bool writable: true
 
   readonly property bool online: state.s.online
   readonly property var info: state.s         // what mouse.js parsed from `peri status`
