@@ -86,6 +86,14 @@ target_compile_definitions(module_test PRIVATE
   FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/modules")
 add_test(NAME module COMMAND module_test)
 
+# The camera pane's core against a fake peri, headless (no window, no device): needs quickshell.
+find_program(QUICKSHELL quickshell)
+if(QUICKSHELL)
+  add_test(NAME camera_pane_scenario COMMAND ${CMAKE_SOURCE_DIR}/tests/qml/camera-scenario/run.sh)
+else()
+  message(WARNING "quickshell not found: the camera pane scenario is skipped")
+endif()
+
 # QML logic tests need the Qt 6 runner (/usr/bin/qmltestrunner is Qt 5 on this system).
 # The pass pattern demands at least one passed test, so an empty or mistyped run cannot pass.
 find_program(QMLTESTRUNNER NAMES qmltestrunner qmltestrunner6 PATHS /usr/lib/qt6/bin NO_DEFAULT_PATH)

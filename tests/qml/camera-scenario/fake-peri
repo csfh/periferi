@@ -1,0 +1,21 @@
+#!/bin/sh
+# A fake peri for tests/qml/camera-scenario: keeps its state in $FAKE_DIR/state, logs every call to
+# $FAKE_DIR/calls, takes a moment to write (so overlaps can happen) and refuses to set `contrast`. It never
+# touches a device and never runs the real peri.
+S="$FAKE_DIR/state"
+[ -f "$S" ] || printf 'brightness=128\ncontrast=128\nsaturation=128\nwhite_balance_automatic=1\nauto_exposure=3\n' > "$S"
+get() { sed -n "s/^$1=//p" "$S"; }
+echo "$(date +%s.%N | cut -c1-14) $*" >> "$FAKE_DIR/calls"
+case "$1" in
+  controls)
+    sleep 0.15
+    printf 'module   brio\nbrightness int:0:255:1:%s:s\ncontrast int:0:255:1:%s:s\nsaturation int:0:255:1:%s:s\nwhite_balance_automatic bool:0:1:1:%s:s\nauto_exposure menu:0:3:1:%s:s\nauto_exposure.options 1:Manual_Mode,3:Aperture_Priority_Mode\n' \
+      "$(get brightness)" "$(get contrast)" "$(get saturation)" "$(get white_balance_automatic)" "$(get auto_exposure)" ;;
+  set)
+    name=${3%%=*}; value=${3#*=}
+    sleep 0.3
+    if [ "$name" = contrast ]; then echo "brio: contrast cannot be changed right now" >&2; exit 1; fi
+    sed -i "s/^$name=.*/$name=$value/" "$S"
+    printf 'module   brio\nsent     %s:%s\nbefore   0\ndevice   ok\nreadback %s\nstored   maybe\n' "$name" "$value" "$value" ;;
+  *) echo "fake peri: refused: $*" >&2; exit 1 ;;
+esac

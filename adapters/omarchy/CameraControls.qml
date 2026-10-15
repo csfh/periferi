@@ -25,7 +25,10 @@ Column {
   Timer {
     interval: 1
     running: root.active && root.visible && root.moduleId !== ""
-    onTriggered: root.peri.refresh("the pane opened")
+    onTriggered: {
+      root.peri.resetHold() // a hold left by a destroyed slider must not block reading for good
+      root.peri.refresh("the pane opened")
+    }
   }
 
   component Caption: Text {
@@ -71,7 +74,7 @@ Column {
           width: row.width
           spacing: Style.space(4)
           readonly property var c: row.modelData.control
-          Label { text: parent.c.title + "  " + Cam.valueText(parent.c) }
+          Label { text: parent.c.title + "  " + Cam.shownText(parent.c, root.peri.shown) }
           PanelSlider {
             width: parent.width
             bar: root.bar
@@ -80,7 +83,11 @@ Column {
             maximum: parent.c.max
             step: parent.c.step
             integer: true
-            value: parent.c.value
+            // What the user just chose until the camera has been read again: the slider never jumps back.
+            value: Cam.shownValue(parent.c, root.peri.shown)
+            onDraggingChanged: root.peri.hold(dragging)
+            // A destroyed slider cannot say it let go: do it for it, or reads would be refused for good.
+            Component.onDestruction: if (dragging) root.peri.hold(false)
             // Released only; the core waits for a pause before it sends.
             onReleased: function(v) { root.peri.chooseValue(parent.c.name, v) }
           }
@@ -99,7 +106,7 @@ Column {
               required property var modelData
               bordered: true
               enabled: root.peri.online && root.peri.writable && !row.modelData.control.inactive
-              selected: row.modelData.control.value === modelData.v
+              selected: Cam.shownValue(row.modelData.control, root.peri.shown) === modelData.v
               text: modelData.label
               onClicked: root.peri.choose(row.modelData.control.name, modelData.v)
             }
@@ -123,7 +130,7 @@ Column {
                 required property var modelData
                 bordered: true
                 enabled: root.peri.online && root.peri.writable && !row.modelData.control.inactive
-                selected: row.modelData.control.value === modelData.index
+                selected: Cam.shownValue(row.modelData.control, root.peri.shown) === modelData.index
                 text: modelData.label
                 onClicked: root.peri.choose(row.modelData.control.name, modelData.index)
               }

@@ -164,6 +164,80 @@ function setArg(c, v) {
 
 function isCurrent(c, v) { return !!c && c.value === v }
 
+// ---- what the pane SHOWS while a choice is on its way to the camera ---------------------------------------
+//
+// PanelSlider snaps its knob back to the model's value the moment the mouse is released, and the write only
+// happens after a pause and takes a moment to read back, so without help the knob would jump back and then
+// forward again. The pane therefore keeps what the user just chose (`shown`: control name -> value) and draws
+// that instead of the camera's value until the camera has been read again afterwards.
+
+// The value to draw for a control: what the user just chose, else what the camera last said.
+function shownValue(c, shown) {
+  return shown && Object.prototype.hasOwnProperty.call(shown, c.name) ? shown[c.name] : c.value
+}
+
+// The control's value as text for its label, using the shown value: "128", "On", "60 Hz".
+function shownText(c, shown) {
+  return valueText(Object.assign({}, c, { value: shownValue(c, shown) }))
+}
+
+// A new `shown` with this choice in it (never changes the old one, so a binding sees the change).
+function choose(shown, name, v) {
+  var next = Object.assign({}, shown)
+  next[name] = v
+  return next
+}
+
+// When the camera has been read again: the choices it now reflects can go, but only if nothing is still on its
+// way (a queued or running write, or a slider being held); otherwise the old camera value would flash back.
+function settle(shown, queueLength, busy) {
+  return queueLength === 0 && !busy ? {} : shown
+}
+
+// May the pane read the camera now? Never while a choice is queued (the read would draw the old value over
+// it), while a read or write runs, or while a slider is being dragged (a new list rebuilds the controls and
+// would take the slider from under the user's hand).
+function mayRead(queueLength, busy, holding) {
+  return queueLength === 0 && !busy && !holding
+}
+
+// ---- the write queue: one entry per control, in the order the user chose them -----------------------------
+//
+// Each entry is { name, value, due } (due: when it may be written, a time in ms: a slider waits for a pause,
+// a button a moment). Choosing the same control again replaces its entry in place; choosing another control
+// adds one, so no choice is ever dropped. The core writes one entry at a time.
+
+function enqueue(queue, name, value, due) {
+  var next = queue.slice()
+  for (var i = 0; i < next.length; i++) {
+    if (next[i].name === name) { next[i] = { name: name, value: value, due: due }; return next }
+  }
+  next.push({ name: name, value: value, due: due })
+  return next
+}
+
+// The queue without this control's entry (the user went back to the value the camera already has).
+function drop(queue, name) {
+  return queue.filter(function(q) { return q.name !== name })
+}
+
+// The first entry whose time has come, and the rest of the queue: { entry, rest }, or null when none is due.
+function dequeue(queue, now) {
+  for (var i = 0; i < queue.length; i++) {
+    if (queue[i].due <= now) {
+      return { entry: queue[i], rest: queue.slice(0, i).concat(queue.slice(i + 1)) }
+    }
+  }
+  return null
+}
+
+// Milliseconds until the earliest entry is due (at least 1), or 0 for an empty queue.
+function wait(queue, now) {
+  if (queue.length === 0) return 0
+  var soonest = queue.reduce(function(m, q) { return Math.min(m, q.due) }, Infinity)
+  return Math.max(1, soonest - now)
+}
+
 // A control's value as text for its label: "128", "On", "60 Hz".
 function valueText(c) {
   if (c.type === "bool") return c.value ? "On" : "Off"

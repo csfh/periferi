@@ -132,6 +132,70 @@ TestCase {
     compare(Cam.isCurrent(b, 128), true); compare(Cam.isCurrent(b, 160), false)
   }
 
+  // The pane draws what the user just chose until the camera has been read again, so the knob never jumps back.
+  function test_shown_values() {
+    var s = Cam.parseControls(reply)
+    var b = Cam.byName(s.controls, "brightness")
+    compare(Cam.shownValue(b, {}), 128)
+    compare(Cam.shownValue(b, null), 128)
+    var shown = Cam.choose({}, "brightness", 160)
+    compare(Cam.shownValue(b, shown), 160)
+    compare(Cam.shownValue(Cam.byName(s.controls, "contrast"), shown), 128)   // other controls are untouched
+    var older = {}
+    var newer = Cam.choose(older, "brightness", 7)
+    compare(Object.keys(older).length, 0)    // the old object is never changed: bindings see a new one
+    compare(newer.brightness, 7)
+    compare(Cam.shownText(b, shown), "160")
+    compare(Cam.shownText(Cam.byName(s.controls, "white_balance_automatic"), { white_balance_automatic: 0 }), "Off")
+    compare(Cam.shownText(Cam.byName(s.controls, "auto_exposure"), { auto_exposure: 1 }), "Manual Mode")
+    // a value of 0 is a real choice, not "nothing chosen"
+    compare(Cam.shownValue(b, Cam.choose({}, "brightness", 0)), 0)
+  }
+
+  // Only settle when nothing is on its way, or the old camera value would flash back.
+  function test_settle_and_may_read() {
+    var shown = { brightness: 160 }
+    compare(Object.keys(Cam.settle(shown, 0, false)).length, 0)
+    compare(Cam.settle(shown, 1, false), shown)      // a write is queued
+    compare(Cam.settle(shown, 0, true), shown)       // a read or write is running
+    compare(Cam.mayRead(0, false, false), true)
+    compare(Cam.mayRead(1, false, false), false)     // never over a queued choice
+    compare(Cam.mayRead(2, false, false), false)
+    compare(Cam.mayRead(0, true, false), false)      // one process at a time
+    compare(Cam.mayRead(0, false, true), false)      // never under a dragged slider
+  }
+
+  // The write queue never drops a choice: one entry per control, in the order they were chosen.
+  function test_the_queue_keeps_every_choice() {
+    var q = Cam.enqueue([], "brightness", 150, 600)
+    q = Cam.enqueue(q, "saturation", 200, 700)
+    compare(q.length, 2)
+    compare(q[0].name, "brightness"); compare(q[1].name, "saturation")
+    // choosing the same control again replaces its entry in place
+    q = Cam.enqueue(q, "brightness", 151, 900)
+    compare(q.length, 2)
+    compare(q[0].value, 151); compare(q[0].due, 900); compare(q[1].name, "saturation")
+    // the old queue is never changed
+    var before = Cam.enqueue([], "gain", 1, 10)
+    Cam.enqueue(before, "contrast", 2, 20)
+    compare(before.length, 1)
+    // going back to the camera's own value removes the entry
+    compare(Cam.drop(q, "brightness").length, 1)
+    compare(Cam.drop(q, "nothing").length, 2)
+  }
+
+  function test_the_queue_hands_out_what_is_due() {
+    var q = Cam.enqueue(Cam.enqueue([], "brightness", 150, 600), "saturation", 200, 100)
+    compare(Cam.dequeue(q, 50), null)                                   // nothing due yet
+    var hit = Cam.dequeue(q, 100)
+    compare(hit.entry.name, "saturation"); compare(hit.rest.length, 1)  // the one that is due, not the first
+    compare(Cam.dequeue(hit.rest, 599), null)
+    compare(Cam.dequeue(hit.rest, 600).entry.name, "brightness")
+    compare(Cam.wait(q, 0), 100)                                        // until the earliest
+    compare(Cam.wait(q, 100), 1)                                        // already due: at least 1
+    compare(Cam.wait([], 0), 0)
+  }
+
   function test_value_text() {
     var s = Cam.parseControls(reply)
     compare(Cam.valueText(Cam.byName(s.controls, "brightness")), "128")
