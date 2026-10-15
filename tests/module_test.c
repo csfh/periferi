@@ -245,8 +245,8 @@ int main(void)
     CHECK(!m.rgb && m.max_brightness == 0 && m.min_dpi == 100 && m.max_dpi == 30000);
 
     // The BRIO's module uses the "v4l2" engine and is anchored on its one HID interface.
-    CHECK(peri_module_load(CATALOG_DIR "/logitech-brio/module.toml", &m, err, sizeof err));
-    CHECK(strcmp(m.id, "logitech-brio") == 0 && strcmp(m.engine, "v4l2") == 0);
+    CHECK(peri_module_load(CATALOG_DIR "/brio/module.toml", &m, err, sizeof err));
+    CHECK(strcmp(m.id, "brio") == 0 && strcmp(m.engine, "v4l2") == 0);
     CHECK(m.vid == 0x046d && m.pid == 0x085e && m.usage_page == 0x000c && m.usage == 0x0001 && !m.rgb);
 
     // Ids double as path components: only [a-z0-9-], not at the edges.

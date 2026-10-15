@@ -11,7 +11,7 @@
 # No capabilities: nothing here is lighting.
 
 schema = 1
-id = "logitech-brio"
+id = "brio"
 name = "Logitech BRIO"
 version = "0.1.0"
 engine = "v4l2"
