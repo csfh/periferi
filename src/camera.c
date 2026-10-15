@@ -465,3 +465,39 @@ int peri_cam_fov_write(int fd, uint8_t value, uint8_t *readback)
     return peri_cam_fov_read(fd, PERI_UVC_GET_CUR, readback, 1);
 }
 
+const char *peri_cam_fov_name(int value)
+{
+    static const char *const names[] = { "wide", "medium", "narrow" };
+    return value >= 0 && value <= PERI_CAM_FOV_MAX ? names[value] : nullptr;
+}
+
+bool peri_cam_fov_parse(const char *text, uint8_t *value)
+{
+    if (!text || !*text)
+        return false;
+    for (int v = 0; v <= PERI_CAM_FOV_MAX; v++)
+        if (strcmp(text, peri_cam_fov_name(v)) == 0) {
+            *value = (uint8_t)v;
+            return true;
+        }
+    char *end;
+    unsigned long n = strtoul(text, &end, 10);
+    if (*end != '\0' || n > PERI_CAM_FOV_MAX || text[0] == '-' || text[0] == '+')
+        return false;
+    *value = (uint8_t)n;
+    return true;
+}
+
+bool peri_cam_fov_state(int fd, struct peri_cam_fov_state *state)
+{
+    uint8_t len[2] = { 0 };
+    *state = (struct peri_cam_fov_state){ 0 };
+    if (peri_cam_fov_read(fd, PERI_UVC_GET_LEN, len, 2) != 0 || len[0] != 1 || len[1] != 0
+        || peri_cam_fov_read(fd, PERI_UVC_GET_INFO, &state->info, 1) != 0
+        || peri_cam_fov_read(fd, PERI_UVC_GET_MAX, &state->max, 1) != 0
+        || peri_cam_fov_read(fd, PERI_UVC_GET_CUR, &state->cur, 1) != 0)
+        return false;
+    state->writable = (state->info & 0x02) && !(state->info & 0x04);
+    return true;
+}
+

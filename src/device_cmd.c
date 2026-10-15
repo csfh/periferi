@@ -166,6 +166,27 @@ static void status_razer90(const char *id, const char *node, char *reply, size_t
              bat, chg, dp, pr);
 }
 
+// The field of view as one more control, so the pane draws it from the same list as the V4L2 ones: for
+// `peri controls` the full "field_of_view=menu:0:2:1:<value>:s field_of_view.options=0:Wide,1:Medium,2:Narrow",
+// for `peri status` just "field_of_view=<value>". Nothing is appended when the camera's descriptor has no such
+// unit or its state cannot be read. Reads only. The flag is "s" only when the camera says it can be written.
+static void append_fov(int fd, const char *node, char *text, size_t size, bool detailed)
+{
+    struct peri_cam_fov_state st;
+    // Only when the camera's range is the three positions the names and options describe.
+    if (!peri_cam_fov_approve_device(node) || !peri_cam_fov_state(fd, &st) || st.max != PERI_CAM_FOV_MAX)
+        return;
+    size_t used = strlen(text);
+    int n;
+    if (detailed)
+        n = snprintf(text + used, size - used, "%sfield_of_view=menu:0:%u:1:%u:%s field_of_view.options=%s", used ? " " : "",
+                     st.max, st.cur, st.writable ? "s" : "r", PERI_CAM_FOV_OPTIONS);
+    else
+        n = snprintf(text + used, size - used, "%sfield_of_view=%u", used ? " " : "", st.cur);
+    if (n < 0 || (size_t)n >= size - used)
+        text[used] = '\0'; // it did not fit: leave the text as it was, never half a token
+}
+
 // A camera's status: the current value of every control it lists, by the names `v4l2-ctl` shows.
 // Reads only (control queries), and the video nodes are never asked to stream.
 static void status_camera(const char *id, const char *node, char *reply, size_t size)
@@ -177,9 +198,12 @@ static void status_camera(const char *id, const char *node, char *reply, size_t 
     }
     struct peri_cam_ctrl ctrls[64];
     size_t count = peri_cam_list(fd, ctrls, 64);
-    close(fd);
     char text[768];
-    if (count == 0 || !peri_cam_status_text(ctrls, count, text, sizeof text)) {
+    bool listed = count > 0 && peri_cam_status_text(ctrls, count, text, sizeof text);
+    if (listed)
+        append_fov(fd, node, text, sizeof text, false);
+    close(fd);
+    if (!listed) {
         err(reply, size, count == 0 ? "the camera listed no controls" : "the camera's controls do not fit in one reply", id);
         return;
     }
@@ -205,8 +229,10 @@ void controls_handle(const char *args, char *reply, size_t size)
     }
     struct peri_cam_ctrl ctrls[64];
     size_t count = peri_cam_list(fd, ctrls, 64);
-    char text[900];
+    char text[960];
     bool fits = count > 0 && peri_cam_controls_text(fd, ctrls, count, text, sizeof text);
+    if (fits)
+        append_fov(fd, node, text, sizeof text, true);
     close(fd);
     if (!fits) {
         err(reply, size, count == 0 ? "the camera listed no controls" : "the camera's controls do not fit in one reply", id);
@@ -215,17 +241,16 @@ void controls_handle(const char *args, char *reply, size_t size)
     snprintf(reply, size, "ok module=%s %s\n", m.id, text);
 }
 
-// `fov <module-id> set <0-2>`: write the field of view. Reads first, and writes nothing unless every check
+// `fov <module-id> set <wide|medium|narrow|0-2>`: write the field of view. Reads first, and writes nothing unless every check
 // passes: the control must report itself writable and not disabled (GET_INFO bits 1 and 2), be one byte long
 // (GET_LEN), allow the value (GET_MAX) and have a current value to put back (GET_CUR). A write of the value
 // it already has is not sent. The reply carries `before` (the restore target) and the camera's own read-back,
 // which for an extension unit is a real query of the device. Which value is which angle is not known.
 static void fov_set(const char *id, const char *value_text, char *reply, size_t size)
 {
-    char *end;
-    unsigned long value = value_text ? strtoul(value_text, &end, 10) : 99;
-    if (!value_text || *end != '\0' || value > PERI_CAM_FOV_MAX) {
-        err(reply, size, "the value must be a whole number from 0 to 2", id);
+    uint8_t value;
+    if (!peri_cam_fov_parse(value_text, &value)) {
+        err(reply, size, "the value must be wide, medium or narrow (or 0, 1 or 2)", id);
         return;
     }
     char node[32];
@@ -245,31 +270,30 @@ static void fov_set(const char *id, const char *value_text, char *reply, size_t 
         err(reply, size, "cannot open the camera (see `journalctl --user -u perid`)", id);
         return;
     }
-    uint8_t len[2] = { 0 }, info = 0, max = 0, before = 0, after = 0;
-    if (peri_cam_fov_read(fd, PERI_UVC_GET_LEN, len, 2) != 0 || len[0] != 1 || len[1] != 0
-        || peri_cam_fov_read(fd, PERI_UVC_GET_INFO, &info, 1) != 0
-        || peri_cam_fov_read(fd, PERI_UVC_GET_MAX, &max, 1) != 0
-        || peri_cam_fov_read(fd, PERI_UVC_GET_CUR, &before, 1) != 0) {
+    struct peri_cam_fov_state st;
+    if (!peri_cam_fov_state(fd, &st)) {
         close(fd);
         err(reply, size, "the control could not be read (length, capabilities, maximum and current value), so nothing was written", id);
         return;
     }
-    if (!(info & 0x02) || (info & 0x04)) {
+    if (!st.writable) {
         close(fd);
         err(reply, size, "the camera says this control cannot be written right now (read-only or disabled), so nothing was written", id);
         return;
     }
-    if (value > max) {
+    if (value > st.max) {
         close(fd);
         err(reply, size, "the value is above the camera's own maximum, so nothing was written", id);
         return;
     }
-    if (before == value) {
+    if (st.cur == value) {
         close(fd);
-        snprintf(reply, size, "ok module=%s fov=set sent=none before=%u readback=%u note=already_at_that_value\n", m.id, before, before);
+        snprintf(reply, size, "ok module=%s fov=set sent=none name=%s before=%u readback=%u note=already_at_that_value\n", m.id,
+                 peri_cam_fov_name(value), st.cur, st.cur);
         return;
     }
-    int rc = peri_cam_fov_write(fd, (uint8_t)value, &after);
+    uint8_t after = 0;
+    int rc = peri_cam_fov_write(fd, value, &after);
     int saved_errno = errno;
     close(fd);
     if (rc != 0) {
@@ -278,7 +302,8 @@ static void fov_set(const char *id, const char *value_text, char *reply, size_t 
         err(reply, size, text, id);
         return;
     }
-    snprintf(reply, size, "ok module=%s fov=set sent=%lu before=%u readback=%u info=%02x stored=maybe\n", m.id, value, before, after, info);
+    snprintf(reply, size, "ok module=%s fov=set sent=field_of_view:%u name=%s before=%u readback=%u info=%02x stored=maybe\n", m.id,
+             value, peri_cam_fov_name(value), st.cur, after, st.info);
 }
 
 void fov_handle(const char *args, char *reply, size_t size)
@@ -294,7 +319,7 @@ void fov_handle(const char *args, char *reply, size_t size)
     const char *query = strtok_r(nullptr, " \n", &rest);
     const char *want = strtok_r(nullptr, " \n", &rest);
     if (!id || !query || strtok_r(nullptr, " \n", &rest)) {
-        snprintf(reply, size, "err usage: fov <module-id> <cur|min|max|res|len|info|def> [size 1-4] | set <0-2>\n");
+        snprintf(reply, size, "err usage: fov <module-id> <cur|min|max|res|len|info|def> [size 1-4] | set <wide|medium|narrow|0-2>\n");
         return;
     }
     if (strcmp(query, "set") == 0) {
@@ -461,7 +486,9 @@ static bool installed_engine_is(const char *id, const char *engine)
 }
 
 // `set <module-id> <control>=<value>` for a camera: one standard control per request, named as `peri
-// status` shows it. The control must be on the settable list, not read-only or inactive, and the value in
+// status` shows it (`field_of_view` is the exception: it is not a V4L2 control and goes to fov_set(), the
+// checked extension-unit write, with a name or number as its value). The control must be on the settable
+// list, not read-only or inactive, and the value in
 // range and on the control's step; the value now is read first and reported as "before", the value to put
 // back. The camera's ok proves nothing about the effect, so the value is read back and reported as it says.
 // Camera settings may be kept by the camera (the BRIO keeps its pan), so every set may be a stored write.
@@ -480,6 +507,10 @@ static void set_camera(const char *id, char *rest, char *reply, size_t size)
         return;
     }
     snprintf(name, sizeof name, "%.*s", (int)(eq - tok), tok);
+    if (strcmp(name, "field_of_view") == 0) { // not a V4L2 control: its own checked write
+        fov_set(id, eq + 1, reply, size);
+        return;
+    }
     char *end;
     long long value = strtoll(eq + 1, &end, 10);
     if (*end != '\0') {

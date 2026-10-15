@@ -181,6 +181,27 @@ int main(void)
     c[0].flags = V4L2_CTRL_FLAG_INACTIVE;
     check(peri_cam_inactive(&c[0]) && !peri_cam_inactive(&c[1]), "inactive flag");
 
+    // The three field-of-view positions have names (0 widest, as the owner saw on a real BRIO), and the CLI
+    // takes the names or the numbers, nothing else.
+    uint8_t fv = 99;
+    check(strcmp(peri_cam_fov_name(0), "wide") == 0 && strcmp(peri_cam_fov_name(1), "medium") == 0
+              && strcmp(peri_cam_fov_name(2), "narrow") == 0,
+          "field-of-view names");
+    check(peri_cam_fov_name(3) == nullptr && peri_cam_fov_name(-1) == nullptr, "no name outside the range");
+    check(peri_cam_fov_parse("wide", &fv) && fv == 0 && peri_cam_fov_parse("medium", &fv) && fv == 1
+              && peri_cam_fov_parse("narrow", &fv) && fv == 2,
+          "parse the names");
+    check(peri_cam_fov_parse("0", &fv) && fv == 0 && peri_cam_fov_parse("2", &fv) && fv == 2, "parse the numbers");
+    fv = 77;
+    check(!peri_cam_fov_parse("3", &fv) && !peri_cam_fov_parse("-1", &fv) && !peri_cam_fov_parse("+1", &fv)
+              && !peri_cam_fov_parse("1x", &fv) && !peri_cam_fov_parse("", &fv) && !peri_cam_fov_parse(nullptr, &fv)
+              && !peri_cam_fov_parse("Wide", &fv) && !peri_cam_fov_parse("zoom", &fv) && fv == 77,
+          "anything else is refused and leaves the value alone");
+    check(strcmp(PERI_CAM_FOV_OPTIONS, "0:Wide,1:Medium,2:Narrow") == 0, "the options text names the same three");
+    struct peri_cam_fov_state fs;
+    errno = 0;
+    check(!peri_cam_fov_state(-1, &fs) && !fs.writable && fs.cur == 0, "no state without an approved unit");
+
     // ---- the field-of-view extension unit: found by GUID in the descriptor, reads and one narrow write --
     uint8_t blob[512];
     size_t blen = build_descriptor(blob, 0xba, true);

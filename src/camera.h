@@ -19,8 +19,10 @@ bool peri_cam_ioctl_allowed(unsigned long request);
 
 // Is this one of the standard V4L2 controls the engine may WRITE (brightness, exposure, focus, zoom,
 // pan and tilt ...)? A fixed list, not "anything in the user or camera class": a driver can map a
-// vendor extension-unit control into V4L2 under its own id, and a generic set must never reach one
-// (the BRIO's field of view, firmware and factory-reset functions live there).
+// vendor extension-unit control into V4L2 under its own id, and a generic V4L2 write must never reach one
+// (the BRIO's firmware and factory-reset functions live there). The one extension-unit control this program
+// writes, the field of view, does not go through this list: it has its own narrow path (see below), routed
+// by name, with its own checks.
 bool peri_cam_settable_id(uint32_t id);
 
 // ioctl(2) on a video node, or -1 with errno EPERM when the request is not allowed, is a control write
@@ -99,6 +101,22 @@ bool peri_cam_fov_approve_device(const char *hidraw_node);
 // and GET_INFO itself (both reads) before the query. 0 on success, -1 and errno otherwise (EPERM if the
 // query is not allowed or no unit is approved; ENOENT, ENOBUFS and EBADRQC are the kernel's refusals).
 int peri_cam_fov_read(int fd, uint8_t query, uint8_t *data, uint16_t size);
+
+// The three positions as seen on a real BRIO (2026-10-15, the owner watching a preview): 0 is the widest view,
+// 1 is more zoomed in, 2 is the most zoomed in (presumably 90, 78 and 65 degrees; the angles were not measured).
+// Other cameras with this unit may order them differently: a name is only as good as the camera it was seen on.
+const char *peri_cam_fov_name(int value);           // "wide", "medium", "narrow", or null
+bool peri_cam_fov_parse(const char *text, uint8_t *value); // those names, or a whole number 0 to PERI_CAM_FOV_MAX
+#define PERI_CAM_FOV_OPTIONS "0:Wide,1:Medium,2:Narrow" // as `peri controls` lists them for the pane
+
+// Everything a write needs to know, read from the camera: the control's length (must be 1), its capabilities
+// (GET_INFO), its own maximum and its current value. False if any read fails or the length is not 1.
+// `writable` is true when GET_INFO says the control accepts a write and is not disabled right now.
+struct peri_cam_fov_state {
+    uint8_t info, max, cur;
+    bool writable;
+};
+bool peri_cam_fov_state(int fd, struct peri_cam_fov_state *state);
 
 // Write the field of view (0 to PERI_CAM_FOV_MAX) and read it back from the camera, which for an extension
 // unit is a real query of the device, not a driver cache. 0 when the camera accepted the write and the value

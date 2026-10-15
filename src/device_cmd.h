@@ -10,8 +10,9 @@
 void status_handle(const char *args, char *reply, size_t size);
 
 // `controls <module-id>` for a camera (the v4l2 engine): every control it lists with its type, range, step,
-// value and flags, and the options of each menu, in the form peri_cam_describe() gives. A read (control
-// queries only). Any other engine is refused.
+// value and flags, and the options of each menu, in the form peri_cam_describe() gives, then the field of view
+// as one more menu row when the camera has that extension unit. A read (control queries and extension-unit
+// GETs only). Any other engine is refused.
 void controls_handle(const char *args, char *reply, size_t size);
 
 // `fov <module-id> <query> [size]` for a camera: ONE read of the field-of-view extension unit's selector 5
@@ -21,7 +22,7 @@ void controls_handle(const char *args, char *reply, size_t size);
 // in the camera's own descriptor and must list selector 5; a query writes nothing, and no other unit or
 // selector can be reached (see camera.h).
 //
-// `fov <module-id> set <0-2>` writes the field of view, after reading its length, capabilities, maximum and
+// `fov <module-id> set <wide|medium|narrow|0-2>` writes the field of view, after reading its length, capabilities, maximum and
 // current value (the restore target); it writes nothing unless the camera says the control is writable.
 void fov_handle(const char *args, char *reply, size_t size);
 
