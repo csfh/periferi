@@ -5,7 +5,7 @@
 # so it may be the receiver. The vendor feature report sits inside the mouse's own collection,
 # so the usage to match is the plain mouse one (0001:0002), not a vendor page.
 #
-# No capabilities (no lighting is known for this model). The daemon reads it for `peri status`
+# No capabilities: this mouse has no lighting (confirmed by its owner). The daemon reads it for `peri status`
 # (firmware, battery, charging, DPI, poll rate) and writes only `peri set <id> dpi=<n>` and
 # `poll=<125|500|1000>`, within the limits below; the panel has a pane for it. The CLI can also
 # send single reads by hand (`peri razer90 <node> firmware|battery|charging|dpi|poll-rate`).

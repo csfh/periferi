@@ -210,7 +210,7 @@ Prerequisite for all automation.
   - [ ] `peri status <module-id>` includes them, stopping at the first read the mouse does not answer (built, not run: running it sends all five reads)
   - [ ] DPI set (`04/05`, `peri set <module-id> dpi=<n>`) and poll-rate set (`00/05`, `poll=<125|500|1000>`): built from the raw driver block; the DPI set is always stored by the mouse (VARSTORE), so every set may be a memory write. The daemon reads the current value first as the restore target (no read, no write), enforces the module's DPI range (100 from the driver's floor, 30000 from Razer's rated sensor), and the pane sends on a slider's release after a pause only. NOT sent yet
   - [x] panel pane (`MouseControls.qml` over `PeriMouse.qml` and `mouse.js`, tests in `tst_mouse.qml`): battery, DPI slider and presets, poll rate; rendered offscreen against a fake peri with canned replies (the pane was never run against the real mouse)
-  - Excluded: device mode (`00/04`, never), the serial (`00/82`, never recorded: the repo is public), lighting (this model is believed to have none: confirm with the owner before building any)
+  - Excluded: device mode (`00/04`, never), the serial (`00/82`, never recorded: the repo is public), lighting (the owner confirmed on 2026-10-14 that this mouse has none)
 
 ## Housekeeping
 
