@@ -27,6 +27,7 @@ var titles = {
   focus_automatic_continuous: "Autofocus",
   focus_absolute: "Focus",
   zoom_absolute: "Zoom",
+  field_of_view: "Field of view",
   pan_absolute: "Pan",
   tilt_absolute: "Tilt"
 }
@@ -36,7 +37,7 @@ var sections = [
   { title: "Image", names: ["brightness", "contrast", "saturation", "sharpness", "gain", "backlight_compensation"] },
   { title: "White balance", names: ["white_balance_automatic", "white_balance_temperature"] },
   { title: "Exposure", names: ["auto_exposure", "exposure_time_absolute", "exposure_dynamic_framerate", "power_line_frequency"] },
-  { title: "Focus and framing", names: ["focus_automatic_continuous", "focus_absolute", "zoom_absolute", "pan_absolute", "tilt_absolute"] }
+  { title: "Focus and framing", names: ["field_of_view", "focus_automatic_continuous", "focus_absolute", "zoom_absolute", "pan_absolute", "tilt_absolute"] }
 ]
 
 function titleOf(name) {
@@ -178,7 +179,9 @@ function valueText(c) {
 function parseSet(text) {
   var v = L.parseValues(text)
   if (!v.module || !v.sent) return { ok: false, name: "", value: null }
+  // A reply that sent nothing ("sent none": the value was already set) is not a write.
   var sent = /^([a-z0-9_]+):(-?\d+)$/.exec(v.sent)
+  if (!sent) return { ok: false, name: "", value: null }
   var rb = /^-?\d+$/.test(v.readback || "") ? Number(v.readback) : null
-  return { ok: true, name: sent ? sent[1] : "", value: rb }
+  return { ok: true, name: sent[1], value: rb }
 }

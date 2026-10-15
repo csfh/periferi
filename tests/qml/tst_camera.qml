@@ -14,13 +14,14 @@ TestCase {
     + "backlight_compensation int:0:1:1:0:s\nauto_exposure menu:0:3:1:3:s\n"
     + "auto_exposure.options 1:Manual_Mode,3:Aperture_Priority_Mode\n"
     + "exposure_time_absolute int:3:2047:1:312:si\nexposure_dynamic_framerate bool:0:1:1:1:s\n"
+    + "field_of_view menu:0:2:1:0:s\nfield_of_view.options 0:Wide,1:Medium,2:Narrow\n"
     + "pan_absolute int:-36000:36000:3600:10800:s\ntilt_absolute int:-36000:36000:3600:0:s\n"
     + "focus_absolute int:0:255:5:10:si\nfocus_automatic_continuous bool:0:1:1:1:s\nzoom_absolute int:100:500:1:100:s\n"
 
   function test_parse_the_real_reply() {
     var s = Cam.parseControls(reply)
     compare(s.online, true)
-    compare(s.controls.length, 17)
+    compare(s.controls.length, 18)
     var b = Cam.byName(s.controls, "brightness")
     compare(b.type, "int"); compare(b.min, 0); compare(b.max, 255); compare(b.step, 1); compare(b.value, 128)
     compare(b.settable, true); compare(b.inactive, false)
@@ -34,6 +35,13 @@ TestCase {
     compare(exp.options[1].index, 3)
     compare(exp.options[1].label, "Aperture Priority Mode")
     compare(Cam.byName(s.controls, "power_line_frequency").options[1].label, "50 Hz")
+    // the field of view is drawn like any menu, from the camera's own three options
+    var fov = Cam.byName(s.controls, "field_of_view")
+    compare(fov.type, "menu"); compare(fov.title, "Field of view")
+    compare(fov.options.length, 3); compare(fov.options[0].label, "Wide"); compare(fov.options[2].label, "Narrow")
+    compare(Cam.valueText(fov), "Wide")
+    compare(Cam.setArg(fov, 1), "field_of_view=1")
+    compare(Cam.setArg(fov, 3), "")
   }
 
   function test_only_settable_controls_are_kept() {
@@ -62,7 +70,7 @@ TestCase {
     var rows = Cam.rows(s.controls)
     var headers = rows.filter(function(r) { return r.kind === "header" }).map(function(r) { return r.title })
     compare(headers, ["Image", "White balance", "Exposure", "Focus and framing"])
-    compare(rows.length, 17 + 4)
+    compare(rows.length, 18 + 4)
     compare(rows[0].kind, "header")
     compare(rows[1].control.name, "brightness")
     var odd = Cam.parseControls("module m\nbrightness int:0:255:1:128:s\nstrange_thing int:0:9:1:0:s\n")
@@ -132,6 +140,14 @@ TestCase {
     compare(Cam.byName(s.controls, "backlight_compensation").type, "bool")
     compare(Cam.valueText(Cam.byName(s.controls, "backlight_compensation")), "Off")
     compare(Cam.valueText(Cam.byName(s.controls, "power_line_frequency")), "60 Hz")
+  }
+
+  // `peri set brio field_of_view=medium` and `peri fov brio set medium` reply with the same shape.
+  function test_parse_set_field_of_view() {
+    var r = Cam.parseSet("module   brio\nfov      set\nsent     field_of_view:1\nname     medium\nbefore   0\nreadback 1\ninfo     03\nstored   maybe\n")
+    compare(r.ok, true); compare(r.name, "field_of_view"); compare(r.value, 1)
+    // a write that was not needed says so and has no value to show
+    compare(Cam.parseSet("module brio\nfov set\nsent none\nname wide\nbefore 0\nreadback 0\nnote already_at_that_value\n").ok, false)
   }
 
   function test_parse_set() {
