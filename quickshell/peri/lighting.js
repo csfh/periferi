@@ -54,6 +54,23 @@ function mergeSettings(pending, incoming) {
 }
 
 function keyOf(setting) { return setting.substring(0, setting.indexOf("=")) }
+
+// What the pane should DRAW for a list of settings that are on their way to the keyboard (in flight or waiting):
+// { brightness (percent), lit, effect, hue, sat, speed, flags }, only for the keys present. The pane draws these
+// over what the keyboard last said until the keyboard has answered, so a slider or a button never lags behind the
+// click or snaps back when the mouse is released. `maxVal` is the keyboard's own brightness limit.
+function shownFrom(settings, maxVal) {
+  var out = {}
+  ;(Array.isArray(settings) ? settings : []).filter(valid).forEach(function(s) {
+    var key = keyOf(s), v = s.substring(s.indexOf("=") + 1)
+    if (key === "val") out.brightness = valToPercent(Number(v), maxVal)
+    else if (key === "enable") out.lit = v === "1" || v === "yes"
+    else if (key === "effect") out.effect = v
+    else if (key === "hue" || key === "sat" || key === "speed") out[key] = Number(v)
+    else if (key === "flags") out.flags = parseInt(v)
+  })
+  return out
+}
 function valid(setting) { return typeof setting === "string" && setting.indexOf("=") > 0 }
 
 // `peri rgb get` and `set` print "key   value" lines, e.g. "hue      48".

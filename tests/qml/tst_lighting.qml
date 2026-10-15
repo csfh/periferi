@@ -93,6 +93,20 @@ TestCase {
   }
 
   // --- coalescing: while a set is running, later ones merge, last value wins ------------
+  // What the pane draws while settings are on their way to the keyboard.
+  function test_shown_from() {
+    var s = L.shownFrom(["val=96", "hue=170", "sat=255", "speed=40", "flags=252", "enable=0", "effect=breathing"], 191)
+    compare(s.brightness, 50); compare(s.hue, 170); compare(s.sat, 255); compare(s.speed, 40)
+    compare(s.flags, 252); compare(s.lit, false); compare(s.effect, "breathing")
+    compare(L.shownFrom(["enable=1"], 191).lit, true)
+    compare(Object.keys(L.shownFrom([], 191)).length, 0)
+    compare(Object.keys(L.shownFrom(["nonsense"], 191)).length, 0)
+    compare(Object.keys(L.shownFrom(["colour=red"], 191)).length, 0)      // a key the display does not know
+    compare(L.shownFrom(["flags=0xfc"], 191).flags, 252)                    // hex is accepted too
+    compare(Object.keys(L.shownFrom(null, 191)).length, 0)
+    compare(L.shownFrom(["val=96"], 0).brightness, 0)                       // no known limit: 0, never a guess
+  }
+
   function test_merge_last_value_wins_per_key() {
     compare(L.mergeSettings([], ["val=10"]), ["val=10"])
     compare(L.mergeSettings(["val=10"], ["val=20"]), ["val=20"])

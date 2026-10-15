@@ -1,0 +1,31 @@
+#!/bin/sh
+# A fake peri for tests/qml/lighting-scenario: keeps a keyboard's lighting in $FAKE_DIR/state, logs every call to
+# $FAKE_DIR/calls, takes a moment to write, can hold a read in flight behind a gate file, and refuses
+# `effect=bad`. Never touches a device, never runs the real peri.
+S="$FAKE_DIR/state"
+[ -f "$S" ] || printf 'hue=10\nsat=255\nval=100\nspeed=48\nflags=255\nenabled=yes\neffect=solid_color\n' > "$S"
+get() { sed -n "s/^$1=//p" "$S"; }
+echo "$(date +%s.%N | cut -c1-14) $*" >> "$FAKE_DIR/calls"
+gate() { n=0; while [ -f "$FAKE_DIR/gate.$1" ] && [ $n -lt 200 ]; do sleep 0.05; n=$((n + 1)); done; }
+config() {
+  printf 'hue      %s\nsat      %s\nval      %s\nspeed    %s\nflags    %s\nenabled  %s\neffect   %s\nmaxval   191\n' \
+    "$(get hue)" "$(get sat)" "$(get val)" "$(get speed)" "$(get flags)" "$(get enabled)" "$(get effect)"
+}
+[ "$1" = rgb ] || { echo "fake peri: refused: $*" >&2; exit 1; }
+case "$2" in
+  get) snapshot=$(config); gate read; sleep 0.15; printf '%s\n' "$snapshot" ;;   # the answer is fixed BEFORE the gate: a held read is stale
+  effects) printf 'effects  solid_color,breathing\n' ;;
+  set)
+    shift 2
+    sleep 0.3
+    for kv in "$@"; do
+      k=${kv%%=*}; v=${kv#*=}
+      if [ "$k" = effect ] && [ "$v" = bad ]; then echo "the keyboard does not know the effect 'bad'" >&2; exit 1; fi
+      case "$k" in
+        enable) if [ "$v" = 1 ]; then v=yes; else v=no; fi; k=enabled ;;
+      esac
+      sed -i "s/^$k=.*/$k=$v/" "$S"
+    done
+    config ;;
+  *) echo "fake peri: refused: $*" >&2; exit 1 ;;
+esac
