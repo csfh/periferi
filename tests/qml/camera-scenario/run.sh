@@ -7,7 +7,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 export FAKE_DIR=$(mktemp -d)
 export FAKE_PERI="$here/fake-peri"
 trap 'rm -rf "$FAKE_DIR"' EXIT
-out=$(QT_QPA_PLATFORM=offscreen timeout 60 quickshell -p "$here" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep 'SCN ' | sed 's/.*SCN /SCN /')
+out=$(QT_QPA_PLATFORM=offscreen timeout 90 quickshell -p "$here" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep 'SCN ' | sed 's/.*SCN /SCN /')
 echo "$out"
 calls=$(sed 's/^[0-9.]* //' "$FAKE_DIR/calls")
 echo "--- calls the fake peri received, in order:"

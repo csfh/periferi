@@ -10,11 +10,14 @@ import "cli.js" as Cli
 //   PeriCamera { id: cam; moduleId: "brio" }
 //   MySlider { onReleased: cam.chooseValue("brightness", v) }
 //
-// Reads happen when refresh() is called, which a host does when it opens the pane, not on a timer. A
-// control's inactive state depends on the others (exposure time is held while exposure is automatic), so
-// every write is followed by one more read. Writes: the camera may keep a setting, a slider's released
-// signal fires once per wheel notch, so chooseValue() waits for a pause; an unchanged value is never sent,
-// and only one write runs at a time.
+// Reads happen when refresh() is called, which a host does when it opens the pane, not on a timer, and once
+// after the LAST write of a batch (a control's inactive state depends on the others: exposure time is held
+// while exposure is automatic). Writes: the camera may keep a setting. What the user chose is drawn at once
+// (`shown`) until the camera has been read again, because PanelSlider snaps its knob back to the model's value
+// on release. Each control has its own queue entry (a slider's released signal fires once per wheel notch, so
+// a slider waits for a pause), one write runs at a time and none is dropped; the camera is never read while a
+// choice is queued, a read or write runs, or a slider is held (see camera.js mayRead), and a list that arrives
+// while a slider is held is applied after the release. An unchanged value is never sent.
 Scope {
   id: root
 

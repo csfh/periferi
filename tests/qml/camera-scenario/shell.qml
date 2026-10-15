@@ -43,47 +43,69 @@ ShellRoot {
   }
   Item { id: root }
 
+  // Hold a kind of call ("read" or "write") in flight in the fake until open()ed: no timing race.
+  function gate(name, on) {
+    var p = Qt.createQmlObject('import Quickshell.Io; Process { }', root, "gate")
+    p.command = ["sh", "-c", (on ? "touch" : "rm -f") + " \"$FAKE_DIR/gate." + name + "\""]
+    p.running = true
+  }
+
+  // Every MARK has its own step, at least 100 ms before the action it labels, so its line in the call log can
+  // never race the fake's own line for that action.
   Component.onCompleted: {
     if (Quickshell.env("QT_QPA_PLATFORM") !== "offscreen") { console.log("refusing: run offscreen"); Qt.quit(); return }
-    step(100,   function() { mark("load"); cam.refresh("start") })
-    step(1000,  function() { log("1-loaded") })
+    step(100,   function() { mark("load") })
+    step(300,   function() { cam.refresh("start") })
+    step(1200,  function() { log("1-loaded") })
 
     // A slider choice is drawn at once; the read asked for while it is queued must be skipped.
-    step(1200,  function() { mark("slider"); cam.chooseValue("brightness", 160); log("2-chosen-immediately"); cam.refresh("while queued (must be skipped)") })
-    step(2900,  function() { log("3-after-write-and-read") })
+    step(1400,  function() { mark("slider") })
+    step(1600,  function() { cam.chooseValue("brightness", 160); log("2-chosen-immediately"); cam.refresh("while queued (must be skipped)") })
+    step(3600,  function() { log("3-after-write-and-read") })
 
     // Two button choices, the second while the first write is running: neither dropped, in order.
-    step(3000,  function() { mark("buttons"); cam.choose("white_balance_automatic", 0) })
-    step(3150,  function() { cam.choose("auto_exposure", 1); log("4-second-choice-during-first-write") })
-    step(5400,  function() { log("5-both-applied") })
+    step(3800,  function() { mark("buttons") })
+    step(4000,  function() { cam.choose("white_balance_automatic", 0) })
+    step(4150,  function() { cam.choose("auto_exposure", 1); log("4-second-choice-during-first-write") })
+    step(5800,  function() { log("5-both-applied") })
 
     // Two DIFFERENT sliders chosen 100 ms apart: both must be written, in order (one queue entry per control).
-    step(5500,  function() { mark("two-sliders"); cam.chooseValue("brightness", 150) })
-    step(5600,  function() { cam.chooseValue("saturation", 200); log("6-two-chosen") })
-    step(7700,  function() { log("7-both-sliders-applied") })
+    step(6000,  function() { mark("two-sliders") })
+    step(6200,  function() { cam.chooseValue("brightness", 150) })
+    step(6300,  function() { cam.chooseValue("saturation", 200); log("6-two-chosen") })
+    step(8500,  function() { log("7-both-sliders-applied") })
 
     // A write the camera refuses: the error stays visible, and the pane goes back to what is true.
-    step(7800,  function() { mark("refused"); cam.chooseValue("contrast", 200) })
-    step(10000, function() { log("8-after-refusal") })
+    step(8700,  function() { mark("refused") })
+    step(8900,  function() { cam.chooseValue("contrast", 200) })
+    step(10900, function() { log("8-after-refusal") })
 
-    // A read that finishes while a slider is held must not replace the controls until it is let go.
-    step(10100, function() { mark("held-read"); poke("s/^saturation=.*/saturation=77/") })
-    step(10200, function() { cam.refresh("slow read") })
-    step(10250, function() { cam.hold(true) })
-    step(10700, function() { log("9-read-finished-while-held (model must not change)") })
-    step(10800, function() { cam.hold(false) })
-    step(10950, function() { log("10-after-release (model has the new value)") })
+    // A read that finishes while a slider is held must not replace the controls until it is let go. The fake
+    // holds the read in flight (gate) until the slider is held: no timing window.
+    step(11100, function() { mark("held-read") })
+    step(11300, function() { poke("s/^saturation=.*/saturation=77/"); gate("read", true) })
+    step(11500, function() { cam.refresh("slow read") })
+    step(11800, function() { cam.hold(true) })
+    step(12000, function() { gate("read", false) })               // the read now finishes, with the slider held
+    step(12500, function() { log("9-read-finished-while-held (model must not change)") })
+    step(12600, function() { cam.hold(false) })
+    step(12800, function() { log("10-after-release (model has the new value)") })
 
     // A write that finishes while a slider is held: the model stays, and no read happens, until the release.
-    step(11000, function() { mark("held-write"); cam.chooseValue("brightness", 140) })
-    step(11750, function() { cam.hold(true) })           // the write is in flight (it started at ~11600)
-    step(12600, function() { log("11-held-after-write (model must not change)") })
-    step(12700, function() { mark("released"); cam.hold(false) })
-    step(13500, function() { log("12-after-release (read happened, model updated)") })
+    step(13000, function() { mark("held-write") })
+    step(13200, function() { gate("write", true) })
+    step(13300, function() { cam.chooseValue("brightness", 140) })
+    step(15000, function() { cam.hold(true) })                    // the write has been blocked in flight since ~13900
+    step(15200, function() { gate("write", false) })              // it finishes now, with the slider held
+    step(16300, function() { log("11-held-after-write (model must not change)") })
+    step(16500, function() { mark("released") })
+    step(16700, function() { cam.hold(false) })
+    step(17700, function() { log("12-after-release (read happened, model updated)") })
 
     // A hold left by a destroyed slider must not block reading for good.
-    step(13600, function() { mark("stuck-hold"); cam.hold(true); cam.refresh("stuck (must be skipped)") })
-    step(13800, function() { cam.resetHold(); cam.refresh("after the pane reopened") })
-    step(14600, function() { console.log("SCN done"); Qt.quit() })
+    step(17900, function() { mark("stuck-hold") })
+    step(18100, function() { cam.hold(true); cam.refresh("stuck (must be skipped)") })
+    step(18300, function() { cam.resetHold(); cam.refresh("after the pane reopened") })
+    step(19200, function() { console.log("SCN done"); Qt.quit() })
   }
 }

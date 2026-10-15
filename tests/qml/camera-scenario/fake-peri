@@ -6,13 +6,18 @@ S="$FAKE_DIR/state"
 [ -f "$S" ] || printf 'brightness=128\ncontrast=128\nsaturation=128\nwhite_balance_automatic=1\nauto_exposure=3\n' > "$S"
 get() { sed -n "s/^$1=//p" "$S"; }
 echo "$(date +%s.%N | cut -c1-14) $*" >> "$FAKE_DIR/calls"
+# A gate: while the file $FAKE_DIR/gate.<name> exists, that kind of call waits (after it has been logged), so the
+# scenario can hold a read or a write "in flight" for exactly as long as it needs, with no timing race.
+gate() { n=0; while [ -f "$FAKE_DIR/gate.$1" ] && [ $n -lt 200 ]; do sleep 0.05; n=$((n + 1)); done; }
 case "$1" in
   controls)
+    gate read
     sleep 0.15
     printf 'module   brio\nbrightness int:0:255:1:%s:s\ncontrast int:0:255:1:%s:s\nsaturation int:0:255:1:%s:s\nwhite_balance_automatic bool:0:1:1:%s:s\nauto_exposure menu:0:3:1:%s:s\nauto_exposure.options 1:Manual_Mode,3:Aperture_Priority_Mode\n' \
       "$(get brightness)" "$(get contrast)" "$(get saturation)" "$(get white_balance_automatic)" "$(get auto_exposure)" ;;
   set)
     name=${3%%=*}; value=${3#*=}
+    gate write
     sleep 0.3
     if [ "$name" = contrast ]; then echo "brio: contrast cannot be changed right now" >&2; exit 1; fi
     sed -i "s/^$name=.*/$name=$value/" "$S"
