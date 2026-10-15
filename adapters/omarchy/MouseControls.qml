@@ -56,7 +56,7 @@ Column {
   PanelSlider {
     width: parent.width
     bar: root.bar
-    enabled: root.peri.online
+    enabled: root.peri.online && root.peri.writable
     minimum: Mouse.minDpi
     maximum: Mouse.maxDpi
     step: 50
@@ -73,7 +73,7 @@ Column {
       delegate: Button {
         required property var modelData
         bordered: true
-        enabled: root.peri.online
+        enabled: root.peri.online && root.peri.writable
         selected: Mouse.dpiSelected(modelData, root.peri.info)
         text: String(modelData)
         onClicked: root.peri.chooseDpi(modelData)
@@ -89,7 +89,7 @@ Column {
       delegate: Button {
         required property var modelData
         bordered: true
-        enabled: root.peri.online
+        enabled: root.peri.online && root.peri.writable
         selected: Mouse.pollSelected(modelData, root.peri.info)
         text: modelData + " Hz"
         onClicked: root.peri.choosePoll(modelData)
@@ -103,5 +103,8 @@ Column {
     text: "Refresh"
     onClicked: root.peri.refresh("the Refresh button")
   }
-  Caption { text: "Changes may be kept in the mouse's own memory." }
+  Caption {
+    text: root.peri.writable ? "Changes may be kept in the mouse's own memory."
+                             : "Changing DPI and poll rate is switched off until it has been tried on the mouse."
+  }
 }

@@ -20,6 +20,10 @@ Scope {
   property string periPath: Quickshell.env("HOME") + "/.local/bin/peri"
   property string moduleId: ""
 
+  // Off until a DPI and a poll-rate set have been seen working on the real mouse: while it is
+  // false, no choose*() call sends anything, and the pane shows its controls as unavailable.
+  property bool writable: false
+
   readonly property bool online: state.s.online
   readonly property var info: state.s         // what mouse.js parsed from `peri status`
   readonly property bool busy: reader.running || writer.running
@@ -33,6 +37,7 @@ Scope {
 
   // A DPI chosen on the slider or a preset button: sent after 600 ms of quiet, once.
   function chooseDpi(v) {
+    if (!root.writable) return
     var next = M.clampDpi(v)
     if (state.s.online && state.s.dpi !== null && state.s.dpi.x === next && state.s.dpi.y === next) {
       state.pendingDpi = -1
@@ -43,11 +48,13 @@ Scope {
   }
 
   function choosePoll(rate) {
+    if (!root.writable) return
     if (state.s.online && state.s.poll === rate) return
     send(M.pollArg(rate))
   }
 
   function send(arg) {
+    if (!root.writable) return
     if (arg === "" || root.moduleId === "" || writer.running || reader.running) return
     state.error = ""
     writer.command = Cli.command(root.periPath, ["set", root.moduleId, arg])
