@@ -118,8 +118,9 @@ Scope {
       onStreamFinished: {
         var r = C.parseSet(this.text)
         if (!r.ok) return
-        // Show the camera's own value at once, then read everything again: other controls may have
-        // become active or inactive.
+        // Show the camera's own value at once, then read everything again (the timer above): other
+        // controls may have become active or inactive.
+        after.restart()
         state.s = {
           online: state.s.online,
           controls: state.s.controls.map(function(c) {
@@ -132,6 +133,5 @@ Scope {
     stderr: StdioCollector {
       onStreamFinished: { if (this.text.trim() !== "") state.error = this.text.trim() }
     }
-    onExited: root.refresh("after a write")
   }
 }
