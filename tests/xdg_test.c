@@ -53,6 +53,20 @@ int main(void)
     CHECK(peri_xdg_path(buf, sizeof buf, PERI_XDG_DATA, "peri/modules"));
     CHECK(strcmp(buf, "/home/me/.local/share/peri/modules") == 0);
 
+    // A relative variable is ignored like an empty one, and runtime has no fallback.
+    clear_bases();
+    setenv("XDG_CONFIG_HOME", "cfg", 1);
+    setenv("XDG_DATA_HOME", "./data", 1);
+    setenv("XDG_RUNTIME_DIR", "run", 1);
+    setenv("HOME", "/home/me", 1);
+    CHECK(peri_xdg_path(buf, sizeof buf, PERI_XDG_CONFIG, "peri/state"));
+    CHECK(strcmp(buf, "/home/me/.config/peri/state") == 0);
+    CHECK(peri_xdg_path(buf, sizeof buf, PERI_XDG_DATA, "peri/modules"));
+    CHECK(strcmp(buf, "/home/me/.local/share/peri/modules") == 0);
+    CHECK(!peri_xdg_path(buf, sizeof buf, PERI_XDG_RUNTIME, "peri.sock"));
+    unsetenv("HOME");
+    CHECK(!peri_xdg_path(buf, sizeof buf, PERI_XDG_DATA, "peri/modules"));
+
     // Unset, with HOME, is the same fallback. Runtime never uses HOME.
     clear_bases();
     setenv("HOME", "/home/me", 1);

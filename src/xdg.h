@@ -9,7 +9,7 @@
 //   DATA    $XDG_DATA_HOME, or $HOME/.local/share
 //   RUNTIME $XDG_RUNTIME_DIR only. The spec gives it no default; inventing one
 //           would put a socket where the other process is not listening.
-// An empty variable counts as unset (the basedir spec). The directory is not created.
+// An empty or relative variable counts as unset (the basedir spec). The directory is not created.
 
 enum peri_xdg {
     PERI_XDG_CONFIG,

@@ -31,7 +31,9 @@ bool peri_xdg_path(char *buf, size_t size, enum peri_xdg base, const char *rel)
         rel = nullptr;
     const char *env = getenv(env_name);
     int n;
-    if (env && *env)
+    // The basedir spec: a relative path is invalid and is ignored, as if unset.
+    // Used as it is, it would resolve from whatever directory the process is in.
+    if (env && env[0] == '/')
         n = rel ? snprintf(buf, size, "%s/%s", env, rel) : snprintf(buf, size, "%s", env);
     else if (home_suffix) {
         const char *home = getenv("HOME");
