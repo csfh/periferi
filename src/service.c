@@ -5,13 +5,14 @@
 // A path that can sit inside a double-quoted unit assignment. Absolute, so a
 // relative XDG value is not resolved later from the daemon's working
 // directory. No quotes or backslashes (they break the quoting) and no %
-// (systemd expands specifiers such as %h in Environment=).
+// (systemd expands specifiers such as %h in Environment=) and no $ (it expands
+// ${VAR} inside a word in ExecStart=).
 static bool unit_path_ok(const char *path)
 {
     if (!path || path[0] != '/')
         return false;
     for (const unsigned char *p = (const unsigned char *)path; *p; p++)
-        if (*p < 0x20 || *p == 0x7f || *p == '"' || *p == '\\' || *p == '%')
+        if (*p < 0x20 || *p == 0x7f || *p == '"' || *p == '\\' || *p == '%' || *p == '$')
             return false;
     return true;
 }

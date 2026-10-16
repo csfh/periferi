@@ -73,7 +73,7 @@ bool peri_installed_dir(char *buf, size_t size);
 enum peri_installed {
     PERI_INSTALLED_OK,
     PERI_INSTALLED_BAD_ID,  // not a module id, so it cannot be installed
-    PERI_INSTALLED_NO_HOME, // neither XDG_DATA_HOME nor HOME is set
+    PERI_INSTALLED_NO_HOME, // neither XDG_DATA_HOME nor HOME is set, or the path does not fit
     PERI_INSTALLED_MISSING, // the directory has no such module
 };
 

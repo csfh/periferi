@@ -12,7 +12,7 @@
 //
 // False (and buf empty, when buf is non-null and size > 0) if any path is
 // missing, not absolute, or contains a character a unit file would treat
-// specially (a quote, a backslash, a %, or a control byte). A path that does
+// specially (a quote, a backslash, a % or $, or a control byte). A path that does
 // not fit is refused rather than written cut off.
 bool peri_user_unit(char *buf, size_t size, const char *perid_path,
                     const char *config_home, const char *data_home);

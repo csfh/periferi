@@ -43,7 +43,7 @@ int main(void)
     CHECK(strstr(buf, "ExecStart=\"/opt/my peri/perid\"\n") != nullptr);
 
     const char *bad_perid[] = { "perid", "relative/perid", "/usr/bin/perid\"",
-                                "/usr/bin/perid\\x", "/usr/bin/%h/perid",
+                                "/usr/bin/perid\\x", "/usr/bin/%h/perid", "/usr/bin/${HOME}/perid",
                                 "/usr/bin/perid\n", nullptr };
     for (int i = 0; bad_perid[i]; i++) {
         strcpy(buf, "stale");

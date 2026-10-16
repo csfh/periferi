@@ -92,7 +92,7 @@ bool peri_look_take(const char *token, struct peri_look_seen *seen, struct peri_
 {
     if (!token || !seen || !field)
         return false;
-    // color2 before color: a shorter prefix would not see the "2".
+    // The "=" right after the key name is what tells color2 from color.
     struct {
         const char *key;
         size_t eq;
@@ -146,7 +146,8 @@ const char *peri_look_read(const struct peri_look_field *fields, size_t count, s
         } else if (strcmp(key, "brightness") == 0) {
             char *end = nullptr;
             unsigned long v = strtoul(value, &end, 10);
-            if (value[0] == '\0' || !end || *end != '\0' || v > 255)
+            // A digit first: strtoul alone would take "+7" and "-0".
+            if (!isdigit((unsigned char)value[0]) || !end || *end != '\0' || v > 255)
                 return "brightness must be a whole number from 0 to 255";
             built.brightness = (int)v;
         } else
@@ -169,7 +170,7 @@ const char *peri_look_stored(const struct peri_look *raw, struct peri_look *out)
         return "a second colour needs a first";
     struct peri_look stored;
     if (!clean(raw, &stored))
-        return look_effect_problem;
+        return "these settings do not make a look that can be saved";
     if (out)
         *out = stored;
     return nullptr;
