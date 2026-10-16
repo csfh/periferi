@@ -60,6 +60,13 @@ int main(void)
     CHECK(!peri_request_line(nullptr, 8, "ping", nullptr, 0));
     CHECK(!peri_request_line(buf, 0, "ping", nullptr, 0));
 
+    CHECK(peri_request_word_ok("effect=static"));
+    CHECK(!peri_request_word_ok("a b"));
+    CHECK(!peri_request_word_ok("a\tb"));
+    CHECK(!peri_request_word_ok("a\x7f"));
+    CHECK(!peri_request_word_ok(""));
+    CHECK(!peri_request_word_ok(nullptr));
+
     // A verb is a whole word. "list" is not "listen", and "set" is not "status".
     const char *rest = "stale";
     CHECK(peri_request_verb("list\n", "list", &rest) && rest == nullptr);
@@ -76,6 +83,8 @@ int main(void)
     CHECK(peri_request_verb("use\n", "use", &rest) && rest == nullptr);
     CHECK(peri_request_verb("use mic\n", "use", &rest) && strcmp(rest, "mic\n") == 0);
     CHECK(!peri_request_verb("user\n", "use", nullptr));
+    // LF only: a CR would stay on the last argument, so it is not the verb's end.
+    CHECK(!peri_request_verb("list\r\n", "list", nullptr));
     CHECK(!peri_request_verb(nullptr, "list", nullptr));
     CHECK(!peri_request_verb("list", "", nullptr));
     CHECK(!peri_request_verb("list", nullptr, nullptr));

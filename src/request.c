@@ -4,7 +4,7 @@
 
 // A single daemon token. Anything at or below ASCII space (space, tab, CR, LF)
 // would be split by the daemon's strtok, or would end the line early.
-static bool token_ok(const char *s)
+bool peri_request_word_ok(const char *s)
 {
     if (!s || !*s)
         return false;
@@ -18,10 +18,10 @@ bool peri_request_line(char *buf, size_t size, const char *verb, char *const *wo
 {
     if (buf && size > 0)
         buf[0] = '\0';
-    if (!buf || size == 0 || !token_ok(verb) || nwords < 0 || (nwords > 0 && !words))
+    if (!buf || size == 0 || !peri_request_word_ok(verb) || nwords < 0 || (nwords > 0 && !words))
         return false;
     for (int i = 0; i < nwords; i++)
-        if (!token_ok(words[i]))
+        if (!peri_request_word_ok(words[i]))
             return false;
 
     // Fit the daemon's read first, then the caller's buffer. A caller that

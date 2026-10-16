@@ -200,7 +200,8 @@ static int cmd_module_verb(const char *verb, const char *id)
     char *const words[] = { (char *)id };
     char req[PERI_REQUEST_MAX + 1], reply[256];
     if (!peri_request_line(req, sizeof req, verb, words, 1)) {
-        fprintf(stderr, "peri: module id too long\n");
+        fprintf(stderr, peri_request_word_ok(id) ? "peri: module id too long\n"
+                                                 : "peri: a module id cannot be empty or contain a space\n");
         return 2;
     }
     if (request(req, reply, sizeof reply) <= 0)
@@ -948,6 +949,14 @@ static int forward_words(const char *verb, char *const *words, int nwords)
         return 2;
     }
     return forward(req);
+        // One word per argument: a space inside one (a quoted "a=1 b=2") is
+        // refused, not split, so say that rather than blame the length.
+        for (int i = 0; i < nwords; i++) {
+            if (!peri_request_word_ok(words[i])) {
+                fprintf(stderr, "peri: an argument cannot be empty or contain a space: pass each setting as its own argument\n");
+                return 2;
+            }
+        }
 }
 
 // peri rgb get
