@@ -19,6 +19,7 @@
 #include "razer90_dev.h"
 #include "razer_dev.h"
 #include "razer_scan.h"
+#include "request.h"
 #include "scan.h"
 #include "service.h"
 #include "udev.h"
@@ -224,8 +225,9 @@ static ssize_t request(const char *req, char *buf, size_t size);
 // Send "use <id>" or "remove <id>" to the daemon and print its one-line answer.
 static int cmd_module_verb(const char *verb, const char *id)
 {
-    char req[96], reply[256];
-    if (snprintf(req, sizeof req, "%s %s\n", verb, id) >= (int)sizeof req) {
+    char *const words[] = { (char *)id };
+    char req[PERI_REQUEST_MAX + 1], reply[256];
+    if (!peri_request_line(req, sizeof req, verb, words, 1)) {
         fprintf(stderr, "peri: module id too long\n");
         return 2;
     }
@@ -965,59 +967,48 @@ static int forward(const char *req)
     return 0;
 }
 
+// One verb plus the caller's words, capped at what perid will read whole.
+static int forward_words(const char *verb, char *const *words, int nwords)
+{
+    char req[PERI_REQUEST_MAX + 1];
+    if (!peri_request_line(req, sizeof req, verb, words, nwords)) {
+        fprintf(stderr, "peri: request too long\n");
+        return 2;
+    }
+    return forward(req);
+}
+
 // peri rgb get
 // peri rgb set <key=value>...
 // The daemon owns the keyboard: this only forwards the request and prints the reply.
 static int cmd_rgb(int argc, char **argv)
 {
-    char req[256] = "rgb";
-    size_t len = strlen(req);
-    for (int i = 2; i < argc; i++) {
-        int n = snprintf(req + len, sizeof req - len, " %s", argv[i]);
-        if (n < 0 || (size_t)n >= sizeof req - len - 2) { // keep room for "\n" and NUL
-            fprintf(stderr, "peri: request too long\n");
-            return 2;
-        }
-        len += (size_t)n;
-    }
-    req[len] = '\n';
-    req[len + 1] = '\0';
-    return forward(req);
+    return forward_words("rgb", argv + 2, argc - 2);
 }
 
 // peri controls <module-id>: a camera's controls with their ranges and menu options (read-only).
 static int cmd_controls(const char *id)
 {
-    char req[96];
-    if (snprintf(req, sizeof req, "controls %s\n", id) >= (int)sizeof req) {
-        fprintf(stderr, "peri: request too long\n");
-        return 2;
-    }
-    return forward(req);
+    char *const words[] = { (char *)id };
+    return forward_words("controls", words, 1);
 }
 
 // peri fov <module-id> <query> [size]: one read of a camera's field-of-view extension unit; `peri fov <module-id> set <wide|medium|narrow|0-2>`
 // writes it (the daemon reads its capabilities and current value first).
 static int cmd_fov(int argc, char **argv)
 {
-    char req[128];
-    int n = snprintf(req, sizeof req, "fov %s %s%s%s\n", argv[2], argv[3], argc == 5 ? " " : "", argc == 5 ? argv[4] : "");
-    if (n < 0 || (size_t)n >= sizeof req) {
-        fprintf(stderr, "peri: request too long\n");
-        return 2;
-    }
-    return forward(req);
+    char *words[3] = { argv[2], argv[3], nullptr };
+    int nwords = 2;
+    if (argc == 5)
+        words[nwords++] = argv[4];
+    return forward_words("fov", words, nwords);
 }
 
 // peri status <module-id>: read what the module's device reports (read-only).
 static int cmd_status(const char *id)
 {
-    char req[96];
-    if (snprintf(req, sizeof req, "status %s\n", id) >= (int)sizeof req) {
-        fprintf(stderr, "peri: request too long\n");
-        return 2;
-    }
-    return forward(req);
+    char *const words[] = { (char *)id };
+    return forward_words("status", words, 1);
 }
 
 // Everything `peri decode --scan` found, kept for the summary.
@@ -1155,19 +1146,7 @@ static int cmd_decode(int argc, char **argv)
 // sends the look to the device.
 static int cmd_look(int argc, char **argv)
 {
-    char req[256] = "look";
-    size_t len = strlen(req);
-    for (int i = 2; i < argc; i++) {
-        int n = snprintf(req + len, sizeof req - len, " %s", argv[i]);
-        if (n < 0 || (size_t)n >= sizeof req - len - 2) {
-            fprintf(stderr, "peri: request too long\n");
-            return 2;
-        }
-        len += (size_t)n;
-    }
-    req[len] = '\n';
-    req[len + 1] = '\0';
-    return forward(req);
+    return forward_words("look", argv + 2, argc - 2);
 }
 
 // peri audio <module-id> get
@@ -1175,19 +1154,7 @@ static int cmd_look(int argc, char **argv)
 // The microphone's standard USB audio controls (capture gain, monitor mix, headphone volume).
 static int cmd_audio(int argc, char **argv)
 {
-    char req[256] = "audio";
-    size_t len = strlen(req);
-    for (int i = 2; i < argc; i++) {
-        int n = snprintf(req + len, sizeof req - len, " %s", argv[i]);
-        if (n < 0 || (size_t)n >= sizeof req - len - 2) {
-            fprintf(stderr, "peri: request too long\n");
-            return 2;
-        }
-        len += (size_t)n;
-    }
-    req[len] = '\n';
-    req[len + 1] = '\0';
-    return forward(req);
+    return forward_words("audio", argv + 2, argc - 2);
 }
 
 // peri set <module-id> brightness=<0-255>
@@ -1196,19 +1163,7 @@ static int cmd_audio(int argc, char **argv)
 // brightness followed a "live only" set), so do not drive this from a slider drag.
 static int cmd_set(int argc, char **argv)
 {
-    char req[128] = "set";
-    size_t len = strlen(req);
-    for (int i = 2; i < argc; i++) {
-        int n = snprintf(req + len, sizeof req - len, " %s", argv[i]);
-        if (n < 0 || (size_t)n >= sizeof req - len - 2) {
-            fprintf(stderr, "peri: request too long\n");
-            return 2;
-        }
-        len += (size_t)n;
-    }
-    req[len] = '\n';
-    req[len + 1] = '\0';
-    return forward(req);
+    return forward_words("set", argv + 2, argc - 2);
 }
 
 int main(int argc, char **argv)

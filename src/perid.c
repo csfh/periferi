@@ -12,6 +12,7 @@
 #include "controls.h"
 #include "inventory.h"
 #include "module.h"
+#include "request.h"
 #include "rgb_cmd.h"
 #include "device_cmd.h"
 #include "scan.h"
@@ -157,8 +158,9 @@ static void handle(int client)
     struct timeval timeout = { .tv_sec = 1 };
     setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
 
-    char req[256];
-    ssize_t n = read(client, req, sizeof req - 1);
+    // PERI_REQUEST_MAX is what the CLI will send. One byte more holds the NUL.
+    char req[PERI_REQUEST_MAX + 1];
+    ssize_t n = read(client, req, PERI_REQUEST_MAX);
     if (n <= 0)
         return;
     req[n] = '\0';
