@@ -98,6 +98,14 @@ add_test(NAME request COMMAND request_test)
 add_executable(fsutil_test tests/fsutil_test.c src/fsutil.c)
 add_test(NAME fsutil COMMAND fsutil_test)
 
+# Refusals only: the cases below return before a device is opened. The sources are
+# the ones set_handle already needs; the test does not call a path that writes.
+add_executable(set_test tests/set_test.c src/device_cmd.c src/audio.c src/store.c src/controls.c
+               src/follow.c src/razer.c src/razer_dev.c src/razer90.c src/razer90_dev.c src/camera.c
+               src/module.c src/fsutil.c src/xdg.c src/scan.c)
+target_link_libraries(set_test PRIVATE tomlc17 ALSA::ALSA)
+add_test(NAME set COMMAND set_test)
+
 # The camera pane's core against a fake peri, headless (no window, no device): needs quickshell.
 find_program(QUICKSHELL quickshell)
 if(QUICKSHELL)

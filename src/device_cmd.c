@@ -443,9 +443,6 @@ static bool parse_color(const char *s, uint8_t rgb[3])
     return true;
 }
 
-static const char effect_names[] =
-    "effect must be none, static, breathing, spectrum, wave or wave-reverse";
-
 // An effect name and up to two colours (hex text, or null) as the options the frame builder takes.
 // False if the name is unknown, a colour is not six hex digits, a second colour has no first, or
 // the effect lacks what it needs (static needs a colour). `speed` is "slow", "fast" or null, and
@@ -668,51 +665,56 @@ void set_handle(const char *args, char *reply, size_t size)
         return;
     }
 
-    long brightness = -1, effect = -1;
-    const char *effect_name = "";
-    const char *color = nullptr, *color2 = nullptr, *speed = nullptr;
+    // A colour, a speed, an effect name and a brightness are the look's rules.
+    // This request only decides that the change is one thing: a brightness, or
+    // an effect. The values are judged before any device is opened.
+    struct peri_look_field fields[5];
+    size_t nfields = 0;
+    bool saw_effect = false, saw_color = false, saw_color2 = false, saw_speed = false,
+         saw_brightness = false;
     for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
-        if (strncmp(t, "speed=", 6) == 0 && !speed) {
-            if (strcmp(t + 6, "slow") != 0 && strcmp(t + 6, "fast") != 0) {
-                err(reply, size, "speed must be slow or fast", id);
-                return;
-            }
-            speed = t + 6;
-        } else if (strncmp(t, "brightness=", 11) == 0 && brightness < 0) {
-            char *end;
-            unsigned long v = strtoul(t + 11, &end, 10);
-            if (t[11] == '\0' || *end != '\0' || v > 255) {
-                err(reply, size, "brightness must be a whole number from 0 to 255", id);
-                return;
-            }
-            brightness = (long)v;
-        } else if (strncmp(t, "effect=", 7) == 0 && effect < 0) {
-            effect = razer_effect_id(t + 7);
-            effect_name = t + 7;
-            if (effect < 0) {
-                err(reply, size, effect_names, id);
-                return;
-            }
-        } else if (strncmp(t, "color=", 6) == 0 && !color) {
-            uint8_t check[3];
-            if (!parse_color(t + 6, check)) {
-                err(reply, size, "color must be six hex digits, like 0000ff", id);
-                return;
-            }
-            color = t + 6;
-        } else if (strncmp(t, "color2=", 7) == 0 && !color2) {
-            uint8_t check[3];
-            if (!parse_color(t + 7, check)) {
-                err(reply, size, "color2 must be six hex digits, like ff0000", id);
-                return;
-            }
-            color2 = t + 7;
+        const char *key = nullptr;
+        const char *value = nullptr;
+        if (strncmp(t, "speed=", 6) == 0 && !saw_speed) {
+            key = "speed";
+            value = t + 6;
+            saw_speed = true;
+        } else if (strncmp(t, "brightness=", 11) == 0 && !saw_brightness) {
+            key = "brightness";
+            value = t + 11;
+            saw_brightness = true;
+        } else if (strncmp(t, "effect=", 7) == 0 && !saw_effect) {
+            key = "effect";
+            value = t + 7;
+            saw_effect = true;
+        } else if (strncmp(t, "color=", 6) == 0 && !saw_color) {
+            key = "color";
+            value = t + 6;
+            saw_color = true;
+        } else if (strncmp(t, "color2=", 7) == 0 && !saw_color2) {
+            key = "color2";
+            value = t + 7;
+            saw_color2 = true;
         } else {
             snprintf(reply, size, "%s", usage);
             return;
         }
+        fields[nfields++] = (struct peri_look_field){ key, value };
     }
-    bool bright_set = brightness >= 0, effect_set = effect >= 0;
+    struct peri_look raw = PERI_LOOK_EMPTY;
+    if (nfields > 0) {
+        const char *why = peri_look_read(fields, nfields, &raw);
+        if (why) {
+            err(reply, size, why, id);
+            return;
+        }
+    }
+    long brightness = raw.brightness;
+    const char *effect_name = raw.effect;
+    const char *color = raw.color[0] ? raw.color : nullptr;
+    const char *color2 = raw.color2[0] ? raw.color2 : nullptr;
+    const char *speed = raw.speed[0] ? raw.speed : nullptr;
+    bool bright_set = brightness >= 0, effect_set = effect_name[0] != '\0';
     if (bright_set == effect_set || (bright_set && (color || color2 || speed))
         || ((color || color2 || speed) && !effect_set)) {
         snprintf(reply, size, "%s", usage);
