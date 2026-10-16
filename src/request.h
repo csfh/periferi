@@ -5,7 +5,9 @@
 
 // How many bytes perid reads of one request (the buffer is one larger, for the NUL).
 // A longer line is cut, and the cut line can be a different command, so the CLI
-// must not send one. Both sides use this number; it is the whole agreement.
+// must not send one. Both sides use this number, and so does every handler
+// that copies its arguments: a buffer smaller than PERI_REQUEST_MAX + 1 would
+// cut a line the CLI was allowed to send.
 #define PERI_REQUEST_MAX 255
 
 // Write "<verb> <word>...\n" into buf. One word is one daemon token: a space,

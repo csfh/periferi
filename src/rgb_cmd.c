@@ -11,6 +11,7 @@
 
 #include "common.h"
 #include "module.h"
+#include "request.h"
 #include "rgb_settings.h"
 #include "scan.h"
 #include "xap.h"
@@ -100,7 +101,7 @@ static void report(const struct xap_rgb *cfg, uint8_t maxval, const char *extra,
 
 void rgb_handle(const char *args, char *reply, size_t size)
 {
-    char line[256];
+    char line[PERI_REQUEST_MAX + 1];
     snprintf(line, sizeof line, "%s", args);
     char *rest;
     const char *verb = strtok_r(line, " \n", &rest);

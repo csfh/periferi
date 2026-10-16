@@ -18,6 +18,7 @@
 #include "camera.h"
 #include "razer90_dev.h"
 #include "razer_dev.h"
+#include "request.h"
 #include "scan.h"
 #include "store.h"
 
@@ -313,7 +314,7 @@ void fov_handle(const char *args, char *reply, size_t size)
         { "res", PERI_UVC_GET_RES, 1 }, { "len", PERI_UVC_GET_LEN, 2 }, { "info", PERI_UVC_GET_INFO, 1 },
         { "def", PERI_UVC_GET_DEF, 1 },
     };
-    char line[128], *rest;
+    char line[PERI_REQUEST_MAX + 1], *rest;
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
     const char *query = strtok_r(nullptr, " \n", &rest);
@@ -648,7 +649,7 @@ void set_handle(const char *args, char *reply, size_t size)
 {
     static const char usage[] = "err usage: set <module-id> brightness=<0-255> | effect=<name> "
                                 "[color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]\n";
-    char line[256], *rest; // the daemon reads at most 255 bytes: never cut a request short
+    char line[PERI_REQUEST_MAX + 1], *rest; // what perid reads: never cut a request short
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
     if (!id) {
@@ -837,7 +838,7 @@ void look_handle(const char *args, char *reply, size_t size)
     static const char usage[] = "err usage: look <module-id> follow <on|off|get> | get|save|apply <unmuted|muted> "
                                 "[effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] "
                                 "[brightness=<0-255>]\n";
-    char line[256], *rest; // as above
+    char line[PERI_REQUEST_MAX + 1], *rest;
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
     const char *verb = strtok_r(nullptr, " \n", &rest);
@@ -955,7 +956,7 @@ void audio_handle(const char *args, char *reply, size_t size)
 {
     static const char usage[] = "err usage: audio <module-id> get | set gain=<0-100> monitor=<0-100> "
                                 "monitor_on=<yes|no> headphones=<0-100>\n";
-    char line[256], *rest; // as above
+    char line[PERI_REQUEST_MAX + 1], *rest;
     snprintf(line, sizeof line, "%s", args);
     const char *id = strtok_r(line, " \n", &rest);
     const char *verb = strtok_r(nullptr, " \n", &rest);
