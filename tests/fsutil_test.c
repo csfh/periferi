@@ -56,6 +56,15 @@ int main(void)
     CHECK(!peri_mkdir_p(too_long));
     CHECK(errno == ENAMETOOLONG);
 
+    // The path itself being a file is not "the directory exists".
+    errno = 0;
+    CHECK(!peri_mkdir_p(file));
+    CHECK(errno == ENOTDIR);
+
+    errno = 0;
+    CHECK(!peri_mkdir_p(""));
+    CHECK(errno == ENOENT);
+
     errno = 0;
     CHECK(!peri_mkdir_p(nullptr));
     CHECK(errno == EINVAL);

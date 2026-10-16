@@ -13,6 +13,10 @@ bool peri_mkdir_p(const char *dir)
         errno = EINVAL;
         return false;
     }
+    if (!*dir) {
+        errno = ENOENT; // as mkdir("") says
+        return false;
+    }
     int n = snprintf(path, sizeof path, "%s", dir);
     // A path that does not fit must not be created truncated: setup's perror
     // is how that refusal is reported.
@@ -33,7 +37,19 @@ bool peri_mkdir_p(const char *dir)
         if (r < 0 && errno != EEXIST)
             return false;
     }
-    return mkdir(path, 0755) == 0 || errno == EEXIST;
+    if (mkdir(path, 0755) == 0)
+        return true;
+    if (errno != EEXIST)
+        return false;
+    // EEXIST is success only for a directory: a file in the way is not one.
+    struct stat st;
+    if (stat(path, &st) != 0)
+        return false;
+    if (!S_ISDIR(st.st_mode)) {
+        errno = ENOTDIR;
+        return false;
+    }
+    return true;
 }
 
 bool peri_write_all(int fd, const char *buf, size_t len)

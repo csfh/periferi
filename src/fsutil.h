@@ -5,7 +5,8 @@
 
 // Small file helpers shared by the module installer and the state store.
 
-// mkdir -p (mode 0755). True if the directory exists afterwards.
+// mkdir -p (mode 0755). True if the directory exists afterwards: a file where the
+// directory should be is ENOTDIR, and an empty path is ENOENT.
 // On failure errno is set, including ENAMETOOLONG when the path does not fit,
 // so a caller can perror instead of creating a truncated directory.
 bool peri_mkdir_p(const char *dir);
