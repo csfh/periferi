@@ -188,7 +188,11 @@ static int setup_service(void)
         fprintf(stderr, "peri: perid did not come up; see `journalctl --user -u perid`\n");
         return 1;
     }
-    printf("peri: perid service enabled and running (%s)\n", unit_path);
+    // Shown because a shell with only some throwaway XDG variables would pin
+    // the wrong directories into the real unit: the owner can see it at once.
+    printf("peri: perid service enabled and running (%s)\n"
+           "peri: pinned XDG_CONFIG_HOME=%s XDG_DATA_HOME=%s\n",
+           unit_path, config_home, data_home);
     return 0;
 }
 
@@ -945,10 +949,6 @@ static int forward_words(const char *verb, char *const *words, int nwords)
 {
     char req[PERI_REQUEST_MAX + 1];
     if (!peri_request_line(req, sizeof req, verb, words, nwords)) {
-        fprintf(stderr, "peri: request too long\n");
-        return 2;
-    }
-    return forward(req);
         // One word per argument: a space inside one (a quoted "a=1 b=2") is
         // refused, not split, so say that rather than blame the length.
         for (int i = 0; i < nwords; i++) {
@@ -957,6 +957,10 @@ static int forward_words(const char *verb, char *const *words, int nwords)
                 return 2;
             }
         }
+        fprintf(stderr, "peri: request too long\n");
+        return 2;
+    }
+    return forward(req);
 }
 
 // peri rgb get
