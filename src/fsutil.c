@@ -9,8 +9,21 @@
 bool peri_mkdir_p(const char *dir)
 {
     char path[PATH_MAX];
-    if (snprintf(path, sizeof path, "%s", dir) >= (int)sizeof path)
+    if (!dir) {
+        errno = EINVAL;
         return false;
+    }
+    int n = snprintf(path, sizeof path, "%s", dir);
+    // A path that does not fit must not be created truncated: setup's perror
+    // is how that refusal is reported.
+    if (n < 0) {
+        errno = EINVAL;
+        return false;
+    }
+    if (n >= (int)sizeof path) {
+        errno = ENAMETOOLONG;
+        return false;
+    }
     for (char *p = path + 1; *p; p++) {
         if (*p != '/')
             continue;

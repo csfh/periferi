@@ -95,6 +95,9 @@ add_test(NAME service COMMAND service_test)
 add_executable(request_test tests/request_test.c src/request.c)
 add_test(NAME request COMMAND request_test)
 
+add_executable(fsutil_test tests/fsutil_test.c src/fsutil.c)
+add_test(NAME fsutil COMMAND fsutil_test)
+
 # The camera pane's core against a fake peri, headless (no window, no device): needs quickshell.
 find_program(QUICKSHELL quickshell)
 if(QUICKSHELL)

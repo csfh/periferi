@@ -14,6 +14,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "fsutil.h"
 #include "json.h"
 #include "module.h"
 #include "razer90_dev.h"
@@ -103,26 +104,6 @@ static int setup_udev(void)
     return ok ? 0 : 1;
 }
 
-// mkdir -p, mode 0755. Returns 0, or -1 with errno set.
-static int mkdir_p(const char *dir)
-{
-    char path[PATH_MAX];
-    if (snprintf(path, sizeof path, "%s", dir) >= (int)sizeof path) {
-        errno = ENAMETOOLONG;
-        return -1;
-    }
-    for (char *p = path + 1; *p; p++) {
-        if (*p != '/')
-            continue;
-        *p = '\0';
-        int r = mkdir(path, 0755);
-        *p = '/';
-        if (r < 0 && errno != EEXIST)
-            return -1;
-    }
-    return mkdir(path, 0755) < 0 && errno != EEXIST ? -1 : 0;
-}
-
 static bool daemon_accepts(void)
 {
     struct sockaddr_un addr;
@@ -179,7 +160,7 @@ static int setup_service(void)
         fprintf(stderr, "peri: neither XDG_CONFIG_HOME nor HOME is set\n");
         return 1;
     }
-    if (mkdir_p(dir) < 0) {
+    if (!peri_mkdir_p(dir)) {
         perror("peri: mkdir");
         return 1;
     }
