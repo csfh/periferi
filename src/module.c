@@ -387,6 +387,24 @@ bool peri_installed_dir(char *buf, size_t size)
     return peri_xdg_path(buf, size, PERI_XDG_DATA, "peri/modules");
 }
 
+enum peri_installed peri_installed_get(const char *id, struct peri_module *out)
+{
+    if (!id || !peri_module_id_valid(id))
+        return PERI_INSTALLED_BAD_ID;
+    char dir[PATH_MAX];
+    if (!peri_installed_dir(dir, sizeof dir))
+        return PERI_INSTALLED_NO_HOME;
+    struct peri_module installed[32];
+    size_t count = peri_modules_scan(dir, installed, 32);
+    for (size_t i = 0; i < count; i++)
+        if (strcmp(installed[i].id, id) == 0) {
+            if (out)
+                *out = installed[i];
+            return PERI_INSTALLED_OK;
+        }
+    return PERI_INSTALLED_MISSING;
+}
+
 bool peri_catalog_dir(char *buf, size_t size)
 {
     char exe[PATH_MAX];

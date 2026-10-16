@@ -476,13 +476,8 @@ static bool effect_opts(const char *name, const char *color, const char *color2,
 // request can be routed before any device is looked at.
 static bool installed_engine_is(const char *id, const char *engine)
 {
-    char dir[PATH_MAX];
-    struct peri_module installed[32];
-    size_t count = peri_installed_dir(dir, sizeof dir) ? peri_modules_scan(dir, installed, 32) : 0;
-    for (size_t i = 0; i < count; i++)
-        if (strcmp(installed[i].id, id) == 0)
-            return strcmp(installed[i].engine, engine) == 0;
-    return false;
+    struct peri_module m;
+    return peri_installed_get(id, &m) == PERI_INSTALLED_OK && strcmp(m.engine, engine) == 0;
 }
 
 // `set <module-id> <control>=<value>` for a camera: one standard control per request, named as `peri
@@ -775,21 +770,19 @@ void set_handle(const char *args, char *reply, size_t size)
 // touching the device. Returns false with an "err ..." reply.
 static bool installed_razer_module(const char *id, struct peri_module *out, char *reply, size_t size)
 {
-    char dir[PATH_MAX];
-    struct peri_module installed[32];
-    size_t count = peri_module_id_valid(id) && peri_installed_dir(dir, sizeof dir)
-                       ? peri_modules_scan(dir, installed, 32) : 0;
-    for (size_t i = 0; i < count; i++)
-        if (strcmp(installed[i].id, id) == 0) {
-            if (strcmp(installed[i].engine, "razer") != 0) {
-                err(reply, size, "this module has no looks", id);
-                return false;
-            }
-            *out = installed[i];
-            return true;
-        }
-    err(reply, size, "no such installed module; run `peri use <id>` (see `peri modules`)", id);
-    return false;
+    struct peri_module m;
+    // A bad id, a missing home and a missing module all read as "not installed"
+    // to the user: none of them is a module that has looks.
+    if (peri_installed_get(id, &m) != PERI_INSTALLED_OK) {
+        err(reply, size, "no such installed module; run `peri use <id>` (see `peri modules`)", id);
+        return false;
+    }
+    if (strcmp(m.engine, "razer") != 0) {
+        err(reply, size, "this module has no looks", id);
+        return false;
+    }
+    *out = m;
+    return true;
 }
 
 static void reply_look(char *reply, size_t size, const char *id, enum peri_look_which which,

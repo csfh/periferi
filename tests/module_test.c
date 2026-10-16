@@ -144,6 +144,39 @@ static void test_install_remove(void)
     CHECK(!exists(installed, "drop-ctrl-v2/.module.toml.tmp"));
     struct peri_module found[4];
     CHECK(peri_modules_scan(installed, found, 4) == 1 && strcmp(found[0].id, "drop-ctrl-v2") == 0);
+
+    // One id, from the installed directory, without listing devices. The env is
+    // put back: the rest of this test passes directories in, not through XDG.
+    char *prev_data = getenv("XDG_DATA_HOME");
+    char *prev_home = getenv("HOME");
+    char saved_data[PATH_MAX] = "", saved_home[PATH_MAX] = "";
+    bool had_data = prev_data != nullptr, had_home = prev_home != nullptr;
+    if (had_data)
+        snprintf(saved_data, sizeof saved_data, "%s", prev_data);
+    if (had_home)
+        snprintf(saved_home, sizeof saved_home, "%s", prev_home);
+    char data_home[PATH_MAX];
+    snprintf(data_home, sizeof data_home, "%s/data", root);
+    setenv("XDG_DATA_HOME", data_home, 1);
+    struct peri_module got;
+    CHECK(peri_installed_get("drop-ctrl-v2", &got) == PERI_INSTALLED_OK);
+    CHECK(strcmp(got.id, "drop-ctrl-v2") == 0 && strcmp(got.engine, "xap") == 0);
+    CHECK(peri_installed_get("drop-ctrl-v2", nullptr) == PERI_INSTALLED_OK);
+    CHECK(peri_installed_get("no-such-module", &got) == PERI_INSTALLED_MISSING);
+    CHECK(peri_installed_get("../x", &got) == PERI_INSTALLED_BAD_ID);
+    CHECK(peri_installed_get(nullptr, &got) == PERI_INSTALLED_BAD_ID);
+    unsetenv("XDG_DATA_HOME");
+    unsetenv("HOME");
+    CHECK(peri_installed_get("drop-ctrl-v2", &got) == PERI_INSTALLED_NO_HOME);
+    if (had_data)
+        setenv("XDG_DATA_HOME", saved_data, 1);
+    else
+        unsetenv("XDG_DATA_HOME");
+    if (had_home)
+        setenv("HOME", saved_home, 1);
+    else
+        unsetenv("HOME");
+
     // Installing again replaces the copy.
     CHECK(peri_module_install(CATALOG_DIR, installed, "drop-ctrl-v2", nullptr, err, sizeof err));
 

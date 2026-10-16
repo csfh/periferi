@@ -67,5 +67,19 @@ size_t peri_modules_scan(const char *dir, struct peri_module *out, size_t max);
 // Where installed modules live: $XDG_DATA_HOME/peri/modules (~/.local/share/...).
 bool peri_installed_dir(char *buf, size_t size);
 
+// One installed module, by id, from that directory. No device is opened or
+// even listed: routing a request (which engine, whether it has looks) must
+// not depend on the device being plugged in.
+enum peri_installed {
+    PERI_INSTALLED_OK,
+    PERI_INSTALLED_BAD_ID,  // not a module id, so it cannot be installed
+    PERI_INSTALLED_NO_HOME, // neither XDG_DATA_HOME nor HOME is set
+    PERI_INSTALLED_MISSING, // the directory has no such module
+};
+
+// *out is filled only on OK. The same cap as the daemon's other module lists
+// (32): a module past that is missing here too, not silently a 33rd.
+enum peri_installed peri_installed_get(const char *id, struct peri_module *out);
+
 // The catalog shipped with this build: <dir of the executable>/../share/peri/catalog.
 bool peri_catalog_dir(char *buf, size_t size);
