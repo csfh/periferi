@@ -14,3 +14,10 @@
 // be, if a word is missing, the line would not fit in size, or it would be
 // longer than PERI_REQUEST_MAX even when size is larger.
 bool peri_request_line(char *buf, size_t size, const char *verb, char *const *words, int nwords);
+
+// The line's first word is this verb. "list" matches "list" and "list --all",
+// not "listen": the character after the verb is the end, a newline, or one space.
+// On a match with nothing after the verb, *rest is set to null. On "verb args",
+// *rest points at the arguments (a trailing newline included). On failure *rest
+// is left alone. rest may be null when the caller does not care.
+bool peri_request_verb(const char *line, const char *verb, const char **rest);

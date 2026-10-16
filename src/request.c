@@ -46,3 +46,18 @@ bool peri_request_line(char *buf, size_t size, const char *verb, char *const *wo
     memcpy(buf, line, len + 1);
     return true;
 }
+
+bool peri_request_verb(const char *line, const char *verb, const char **rest)
+{
+    if (!line || !verb || !*verb)
+        return false;
+    size_t n = strlen(verb);
+    if (strncmp(line, verb, n) != 0)
+        return false;
+    // A longer word that only starts with the verb is a different command.
+    if (line[n] != '\0' && line[n] != '\n' && line[n] != ' ')
+        return false;
+    if (rest)
+        *rest = line[n] == ' ' ? line + n + 1 : nullptr;
+    return true;
+}

@@ -165,65 +165,71 @@ static void handle(int client)
         return;
     req[n] = '\0';
 
-    if (strncmp(req, "list", 4) == 0) {
+    const char *args = nullptr;
+    if (peri_request_verb(req, "list", nullptr)) {
         send_list(client);
         return;
     }
-    if (strncmp(req, "devices", 7) == 0) {
+    if (peri_request_verb(req, "devices", nullptr)) {
         send_devices(client);
         return;
     }
-    if (strncmp(req, "modules", 7) == 0) {
+    if (peri_request_verb(req, "modules", nullptr)) {
         send_modules(client);
         return;
     }
-    if (strncmp(req, "use ", 4) == 0 || strncmp(req, "remove ", 7) == 0) {
+    // These take arguments, so a bare "use" stays an unknown command. args is
+    // null when the verb has no space after it.
+    if ((peri_request_verb(req, "use", &args) || peri_request_verb(req, "remove", &args)) && args) {
         bool use = req[0] == 'u';
-        module_verb(client, use, req + (use ? 4 : 7));
+        module_verb(client, use, (char *)args);
         controls_detach(); // a module came or went: the reader decides again
         controls_rescan();
         return;
     }
-    if (strncmp(req, "rgb ", 4) == 0) {
+    if (peri_request_verb(req, "rgb", &args) && args) {
         char reply[1024];
-        rgb_handle(req + 4, reply, sizeof reply);
+        rgb_handle(args, reply, sizeof reply);
         (void)!write(client, reply, strlen(reply));
         return;
     }
-    if (strncmp(req, "audio ", 6) == 0) {
+    if (peri_request_verb(req, "audio", &args) && args) {
         char reply[256];
-        audio_handle(req + 6, reply, sizeof reply);
+        audio_handle(args, reply, sizeof reply);
         (void)!write(client, reply, strlen(reply));
         return;
     }
-    if (strncmp(req, "look ", 5) == 0) {
+    if (peri_request_verb(req, "look", &args) && args) {
         char reply[256];
-        look_handle(req + 5, reply, sizeof reply);
+        look_handle(args, reply, sizeof reply);
         (void)!write(client, reply, strlen(reply));
         return;
     }
-    if (strncmp(req, "fov ", 4) == 0) {
+    if (peri_request_verb(req, "fov", &args) && args) {
         char reply[256];
-        fov_handle(req + 4, reply, sizeof reply);
+        fov_handle(args, reply, sizeof reply);
         (void)!write(client, reply, strlen(reply));
         return;
     }
-    if (strncmp(req, "controls ", 9) == 0) {
+    if (peri_request_verb(req, "controls", &args) && args) {
         char reply[1024]; // every control with its range, and the menus' options
-        controls_handle(req + 9, reply, sizeof reply);
+        controls_handle(args, reply, sizeof reply);
         (void)!write(client, reply, strlen(reply));
         return;
     }
-    if (strncmp(req, "status ", 7) == 0 || strncmp(req, "set ", 4) == 0) {
+    if (peri_request_verb(req, "status", &args) && args) {
         char reply[1024]; // a camera's status lists every control
-        if (req[0] == 's' && req[1] == 't')
-            status_handle(req + 7, reply, sizeof reply);
-        else
-            set_handle(req + 4, reply, sizeof reply);
+        status_handle(args, reply, sizeof reply);
         (void)!write(client, reply, strlen(reply));
         return;
     }
-    const char *reply = strncmp(req, "ping", 4) == 0 ? "pong\n" : "err unknown command\n";
+    if (peri_request_verb(req, "set", &args) && args) {
+        char reply[1024];
+        set_handle(args, reply, sizeof reply);
+        (void)!write(client, reply, strlen(reply));
+        return;
+    }
+    const char *reply = peri_request_verb(req, "ping", nullptr) ? "pong\n" : "err unknown command\n";
     (void)!write(client, reply, strlen(reply));
 }
 

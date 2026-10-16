@@ -60,6 +60,26 @@ int main(void)
     CHECK(!peri_request_line(nullptr, 8, "ping", nullptr, 0));
     CHECK(!peri_request_line(buf, 0, "ping", nullptr, 0));
 
+    // A verb is a whole word. "list" is not "listen", and "set" is not "status".
+    const char *rest = "stale";
+    CHECK(peri_request_verb("list\n", "list", &rest) && rest == nullptr);
+    CHECK(peri_request_verb("list", "list", &rest) && rest == nullptr);
+    CHECK(peri_request_verb("list --all\n", "list", &rest) && strcmp(rest, "--all\n") == 0);
+    CHECK(!peri_request_verb("listen", "list", &rest) && strcmp(rest, "--all\n") == 0);
+    CHECK(!peri_request_verb("listfoo", "list", nullptr));
+    CHECK(peri_request_verb("ping\n", "ping", nullptr));
+    CHECK(peri_request_verb("ping extra", "ping", &rest) && strcmp(rest, "extra") == 0);
+    CHECK(peri_request_verb("status id\n", "status", &rest) && strcmp(rest, "id\n") == 0);
+    CHECK(!peri_request_verb("status id\n", "set", nullptr));
+    CHECK(peri_request_verb("set brightness=1\n", "set", &rest) && rest[0] == 'b');
+    CHECK(!peri_request_verb("settings\n", "set", nullptr));
+    CHECK(peri_request_verb("use\n", "use", &rest) && rest == nullptr);
+    CHECK(peri_request_verb("use mic\n", "use", &rest) && strcmp(rest, "mic\n") == 0);
+    CHECK(!peri_request_verb("user\n", "use", nullptr));
+    CHECK(!peri_request_verb(nullptr, "list", nullptr));
+    CHECK(!peri_request_verb("list", "", nullptr));
+    CHECK(!peri_request_verb("list", nullptr, nullptr));
+
     if (failures) {
         printf("%d failed\n", failures);
         return 1;
