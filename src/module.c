@@ -14,6 +14,7 @@
 #include "fsutil.h"
 #include "scan.h"
 #include "tomlc17.h"
+#include "xdg.h"
 
 static const size_t max_module_file = 64 * 1024;
 
@@ -383,16 +384,7 @@ size_t peri_modules_scan(const char *dir, struct peri_module *out, size_t max)
 
 bool peri_installed_dir(char *buf, size_t size)
 {
-    const char *data = getenv("XDG_DATA_HOME");
-    const char *home = getenv("HOME");
-    int n;
-    if (data && *data)
-        n = snprintf(buf, size, "%s/peri/modules", data);
-    else if (home && *home)
-        n = snprintf(buf, size, "%s/.local/share/peri/modules", home);
-    else
-        return false;
-    return n > 0 && (size_t)n < size;
+    return peri_xdg_path(buf, size, PERI_XDG_DATA, "peri/modules");
 }
 
 bool peri_catalog_dir(char *buf, size_t size)

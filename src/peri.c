@@ -67,15 +67,13 @@ static int setup_udev(void)
         return 0;
     }
 
-    const char *runtime = getenv("XDG_RUNTIME_DIR");
-    if (!runtime || !*runtime) {
+    // Stage the rule as the user, then let root copy it into place. A path that
+    // does not fit is refused rather than written truncated.
+    char tmp[256];
+    if (!peri_xdg_path(tmp, sizeof tmp, PERI_XDG_RUNTIME, "peri-rules-XXXXXX")) {
         fprintf(stderr, "peri: XDG_RUNTIME_DIR is not set\n");
         return 1;
     }
-
-    // Stage the rule as the user, then let root copy it into place.
-    char tmp[256];
-    snprintf(tmp, sizeof tmp, "%s/peri-rules-XXXXXX", runtime);
     int fd = mkstemp(tmp);
     if (fd < 0) {
         perror("peri: mkstemp");
@@ -156,14 +154,10 @@ static int setup_service(void)
         return 1;
     }
 
-    const char *config = getenv("XDG_CONFIG_HOME");
-    const char *home = getenv("HOME");
+    // Same config base as saved looks. A path that does not fit is refused
+    // rather than creating a truncated directory.
     char dir[PATH_MAX];
-    if (config && *config)
-        snprintf(dir, sizeof dir, "%s/systemd/user", config);
-    else if (home && *home)
-        snprintf(dir, sizeof dir, "%s/.config/systemd/user", home);
-    else {
+    if (!peri_xdg_path(dir, sizeof dir, PERI_XDG_CONFIG, "systemd/user")) {
         fprintf(stderr, "peri: neither XDG_CONFIG_HOME nor HOME is set\n");
         return 1;
     }

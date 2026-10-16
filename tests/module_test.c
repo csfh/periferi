@@ -328,5 +328,13 @@ int main(void)
     test_select();
     test_install_remove();
 
+    // The installed-module directory is the data base plus this suffix. The
+    // base's own rules are tested against peri_xdg_path; this locks the suffix.
+    unsetenv("XDG_DATA_HOME");
+    setenv("HOME", "/tmp/peri-mod-home", 1);
+    char dir[PATH_MAX];
+    CHECK(peri_installed_dir(dir, sizeof dir));
+    CHECK(strcmp(dir, "/tmp/peri-mod-home/.local/share/peri/modules") == 0);
+
     return failures ? 1 : 0;
 }

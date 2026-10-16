@@ -2,22 +2,25 @@
 
 #include <ctype.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
+#include "xdg.h"
+
 // Fill addr with $XDG_RUNTIME_DIR/peri.sock. Returns 0, or -1 if unavailable.
 static inline int peri_socket_addr(struct sockaddr_un *addr)
 {
-    const char *dir = getenv("XDG_RUNTIME_DIR");
-    if (!dir || !*dir)
+    // sun_path is shorter than a general path, so a path that fits PATH_MAX can
+    // still not be a socket address the other side can open.
+    char path[sizeof addr->sun_path];
+    if (!peri_xdg_path(path, sizeof path, PERI_XDG_RUNTIME, "peri.sock"))
         return -1;
 
     *addr = (struct sockaddr_un){ .sun_family = AF_UNIX };
-    int n = snprintf(addr->sun_path, sizeof addr->sun_path, "%s/peri.sock", dir);
-    return (n < 0 || (size_t)n >= sizeof addr->sun_path) ? -1 : 0;
+    memcpy(addr->sun_path, path, strlen(path) + 1);
+    return 0;
 }
 
 // "0102" -> {0x01, 0x02}. Returns the byte count, or -1 if malformed.

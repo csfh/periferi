@@ -23,8 +23,8 @@ target_compile_options(tomlc17 PRIVATE -w)
 
 find_package(ALSA REQUIRED)
 
-add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/fsutil.c src/scan.c src/xap.c src/razer.c src/razer_scan.c src/razer_dev.c src/razer90.c src/razer90_dev.c src/camera.c)
-add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/fsutil.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/device_cmd.c src/audio.c src/store.c src/controls.c src/follow.c src/razer.c src/razer_dev.c src/razer90.c src/razer90_dev.c src/camera.c)
+add_executable(peri  src/peri.c src/udev.c src/json.c src/module.c src/fsutil.c src/xdg.c src/scan.c src/xap.c src/razer.c src/razer_scan.c src/razer_dev.c src/razer90.c src/razer90_dev.c src/camera.c)
+add_executable(perid src/perid.c src/udev.c src/inventory.c src/module.c src/fsutil.c src/xdg.c src/rgb_cmd.c src/rgb_settings.c src/scan.c src/xap.c src/device_cmd.c src/audio.c src/store.c src/controls.c src/follow.c src/razer.c src/razer_dev.c src/razer90.c src/razer90_dev.c src/camera.c)
 target_link_libraries(peri PRIVATE tomlc17)
 target_link_libraries(perid PRIVATE tomlc17 ALSA::ALSA)
 
@@ -39,11 +39,11 @@ add_executable(scan_test tests/scan_test.c src/scan.c)
 target_compile_definitions(scan_test PRIVATE FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/descriptors")
 add_test(NAME scan COMMAND scan_test)
 
-add_executable(inventory_test tests/inventory_test.c src/inventory.c src/module.c src/fsutil.c src/scan.c)
+add_executable(inventory_test tests/inventory_test.c src/inventory.c src/module.c src/fsutil.c src/xdg.c src/scan.c)
 target_link_libraries(inventory_test PRIVATE tomlc17)
 add_test(NAME inventory COMMAND inventory_test)
 
-add_executable(udev_test tests/udev_test.c src/udev.c src/module.c src/fsutil.c)
+add_executable(udev_test tests/udev_test.c src/udev.c src/module.c src/fsutil.c src/xdg.c)
 target_link_libraries(udev_test PRIVATE tomlc17)
 add_test(NAME udev COMMAND udev_test)
 
@@ -62,7 +62,7 @@ add_test(NAME camera_no_streaming
 add_executable(razer90_test tests/razer90_test.c src/razer90.c src/razer.c)
 add_test(NAME razer90 COMMAND razer90_test)
 
-add_executable(store_test tests/store_test.c src/store.c src/module.c src/fsutil.c src/razer.c)
+add_executable(store_test tests/store_test.c src/store.c src/module.c src/fsutil.c src/xdg.c src/razer.c)
 target_link_libraries(store_test PRIVATE tomlc17)
 add_test(NAME store COMMAND store_test)
 
@@ -79,12 +79,15 @@ add_test(NAME follow COMMAND follow_test)
 add_executable(json_test tests/json_test.c src/json.c)
 add_test(NAME json COMMAND json_test)
 
-add_executable(module_test tests/module_test.c src/module.c src/fsutil.c)
+add_executable(module_test tests/module_test.c src/module.c src/fsutil.c src/xdg.c)
 target_link_libraries(module_test PRIVATE tomlc17)
 target_compile_definitions(module_test PRIVATE
   CATALOG_DIR="${CMAKE_SOURCE_DIR}/catalog"
   FIXTURES_DIR="${CMAKE_SOURCE_DIR}/tests/fixtures/modules")
 add_test(NAME module COMMAND module_test)
+
+add_executable(xdg_test tests/xdg_test.c src/xdg.c)
+add_test(NAME xdg COMMAND xdg_test)
 
 # The camera pane's core against a fake peri, headless (no window, no device): needs quickshell.
 find_program(QUICKSHELL quickshell)

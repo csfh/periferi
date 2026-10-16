@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
 

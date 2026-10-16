@@ -13,18 +13,11 @@
 #include "module.h"
 #include "razer.h"
 #include "tomlc17.h"
+#include "xdg.h"
 
 bool peri_look_dir(char *buf, size_t size)
 {
-    const char *cfg = getenv("XDG_CONFIG_HOME"), *home = getenv("HOME");
-    int n;
-    if (cfg && *cfg)
-        n = snprintf(buf, size, "%s/peri/state", cfg);
-    else if (home && *home)
-        n = snprintf(buf, size, "%s/.config/peri/state", home);
-    else
-        return false;
-    return n > 0 && (size_t)n < size;
+    return peri_xdg_path(buf, size, PERI_XDG_CONFIG, "peri/state");
 }
 
 static const char *const which_names[] = { "unmuted", "muted" };
