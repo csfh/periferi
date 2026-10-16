@@ -20,6 +20,7 @@
 #include "razer_dev.h"
 #include "razer_scan.h"
 #include "scan.h"
+#include "service.h"
 #include "udev.h"
 #include "xap.h"
 
@@ -149,8 +150,24 @@ static int setup_service(void)
 
     char perid[PATH_MAX + 8];
     snprintf(perid, sizeof perid, "%s/perid", self);
-    if (access(perid, X_OK) < 0 || strpbrk(perid, "%\"\\")) {
+    if (access(perid, X_OK) < 0) {
         fprintf(stderr, "peri: cannot use %s as the service binary\n", perid);
+        return 1;
+    }
+
+    // Same bases the modules and saved looks were just checked against. They
+    // are pinned into the unit below: a user service does not inherit this
+    // shell's XDG variables, so the daemon would otherwise look elsewhere.
+    char config_home[PATH_MAX], data_home[PATH_MAX];
+    if (!peri_xdg_path(config_home, sizeof config_home, PERI_XDG_CONFIG, nullptr)
+        || !peri_xdg_path(data_home, sizeof data_home, PERI_XDG_DATA, nullptr)) {
+        fprintf(stderr, "peri: neither XDG_CONFIG_HOME/XDG_DATA_HOME nor HOME is set\n");
+        return 1;
+    }
+    // Three absolute paths, each up to PATH_MAX, plus the unit text around them.
+    char unit[3 * PATH_MAX + 512];
+    if (!peri_user_unit(unit, sizeof unit, perid, config_home, data_home)) {
+        fprintf(stderr, "peri: cannot pin the perid path or the config and data directories into the service\n");
         return 1;
     }
 
@@ -173,17 +190,12 @@ static int setup_service(void)
         perror("peri: perid.service");
         return 1;
     }
-    fprintf(f,
-            "[Unit]\n"
-            "Description=peri peripheral daemon\n"
-            "\n"
-            "[Service]\n"
-            "ExecStart=\"%s\"\n"
-            "Restart=on-failure\n"
-            "\n"
-            "[Install]\n"
-            "WantedBy=default.target\n",
-            perid);
+    if (fputs(unit, f) < 0) {
+        perror("peri: perid.service");
+        fclose(f);
+        unlink(unit_path); // a half-written unit would pin nothing, or the wrong path
+        return 1;
+    }
     if (fclose(f) != 0) {
         perror("peri: perid.service");
         return 1;

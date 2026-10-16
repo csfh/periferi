@@ -237,7 +237,7 @@ Prerequisite for all automation.
 
 ## Housekeeping
 
-- [ ] The CLI (shell environment) and the daemon (systemd's) may resolve `$XDG_DATA_HOME` differently. Setup now installs and checks in one process, so it no longer loops, but a module the CLI installs could be invisible to the daemon, and the udev rule is built from the CLI's view. Pin both to one data dir (for example by passing it to the unit)  **[ready]**
+- [x] The CLI (shell environment) and the daemon (systemd's) may resolve `$XDG_DATA_HOME` differently. Setup installs and checks in one process, and the user unit it writes pins those resolved directories (`Environment=XDG_CONFIG_HOME` and `XDG_DATA_HOME`) so the daemon uses them rather than the user manager's defaults. The runtime directory is not pinned: it is per session and has no default. The udev rule carries only vid:pid, built in that same setup process.
 - [ ] More unit tests (only the color conversion has one) and a mock transport so features can be tested without the keyboard
 - [ ] Daemon logging
 - [ ] License and contribution files (not decided)
