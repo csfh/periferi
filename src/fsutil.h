@@ -13,3 +13,8 @@ bool peri_mkdir_p(const char *dir);
 
 // write() until everything is written, retrying on EINTR. False on any error.
 bool peri_write_all(int fd, const char *buf, size_t len);
+
+// Replace path with these bytes: write a temp file beside it, then rename, so a
+// failed or interrupted write (a full disk shows at close) leaves the old file
+// whole and no temp file behind. The directory must exist. errno is set on failure.
+bool peri_write_file_atomic(const char *path, const char *data, size_t len);

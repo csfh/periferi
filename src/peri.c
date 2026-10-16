@@ -167,18 +167,9 @@ static int setup_service(void)
 
     char unit_path[PATH_MAX + 16];
     snprintf(unit_path, sizeof unit_path, "%s/perid.service", dir);
-    FILE *f = fopen(unit_path, "w");
-    if (!f) {
-        perror("peri: perid.service");
-        return 1;
-    }
-    if (fputs(unit, f) < 0) {
-        perror("peri: perid.service");
-        fclose(f);
-        unlink(unit_path); // a half-written unit would pin nothing, or the wrong path
-        return 1;
-    }
-    if (fclose(f) != 0) {
+    // Replaced whole or not at all: a half-written unit would pin nothing, or
+    // the wrong path, and must not destroy the working one.
+    if (!peri_write_file_atomic(unit_path, unit, strlen(unit))) {
         perror("peri: perid.service");
         return 1;
     }

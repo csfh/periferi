@@ -69,6 +69,41 @@ int main(void)
     CHECK(!peri_mkdir_p(nullptr));
     CHECK(errno == EINVAL);
 
+    // An atomic write replaces the file whole and leaves no temp file.
+    char target[PATH_MAX], temp[PATH_MAX], text[64];
+    snprintf(target, sizeof target, "%s/a/unit.service", root);
+    snprintf(temp, sizeof temp, "%s/a/.unit.service.tmp", root);
+    CHECK(peri_write_file_atomic(target, "old\n", 4));
+    CHECK(peri_write_file_atomic(target, "new\n", 4));
+    fd = open(target, O_RDONLY | O_CLOEXEC);
+    ssize_t got = fd >= 0 ? read(fd, text, sizeof text - 1) : -1;
+    if (fd >= 0)
+        close(fd);
+    CHECK(got == 4 && memcmp(text, "new\n", 4) == 0);
+    CHECK(access(temp, F_OK) != 0);
+
+    // A write that fails leaves the old file as it was: here the temp name is
+    // taken by a directory, so the write cannot start.
+    CHECK(mkdir(temp, 0755) == 0);
+    errno = 0;
+    CHECK(!peri_write_file_atomic(target, "newer\n", 6));
+    CHECK(errno == EISDIR);
+    fd = open(target, O_RDONLY | O_CLOEXEC);
+    got = fd >= 0 ? read(fd, text, sizeof text - 1) : -1;
+    if (fd >= 0)
+        close(fd);
+    CHECK(got == 4 && memcmp(text, "new\n", 4) == 0);
+    CHECK(rmdir(temp) == 0);
+
+    char missing[PATH_MAX];
+    snprintf(missing, sizeof missing, "%s/nodir/unit.service", root);
+    errno = 0;
+    CHECK(!peri_write_file_atomic(missing, "x", 1));
+    CHECK(errno == ENOENT);
+    errno = 0;
+    CHECK(!peri_write_file_atomic(nullptr, "x", 1));
+    CHECK(errno == EINVAL);
+
     nftw(root, rm_entry, 16, FTW_DEPTH | FTW_PHYS);
     if (failures) {
         printf("%d failed\n", failures);

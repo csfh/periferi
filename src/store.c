@@ -275,12 +275,11 @@ static int append_look(char *buf, size_t size, enum peri_look_which which, const
     return n + snprintf(buf + n, size - (size_t)n, "\n");
 }
 
-// Write both looks and the flag as one file, atomically (temp file, then rename).
+// Write both looks and the flag as one file, atomically.
 static bool write_state(const char *module_id, const struct peri_look looks[2], bool follow)
 {
-    char dir[PATH_MAX], path[PATH_MAX], tmp[PATH_MAX];
-    if (!look_path(module_id, dir, sizeof dir, path, sizeof path)
-        || snprintf(tmp, sizeof tmp, "%s/.%s.toml.tmp", dir, module_id) >= (int)sizeof tmp)
+    char dir[PATH_MAX], path[PATH_MAX];
+    if (!look_path(module_id, dir, sizeof dir, path, sizeof path))
         return false;
 
     char text[768];
@@ -292,16 +291,7 @@ static bool write_state(const char *module_id, const struct peri_look looks[2], 
     if (len >= (int)sizeof text || !peri_mkdir_p(dir))
         return false;
 
-    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0644);
-    if (fd < 0)
-        return false;
-    bool wrote = peri_write_all(fd, text, (size_t)len);
-    bool closed = close(fd) == 0; // always close, even after a failed write
-    if (!wrote || !closed || rename(tmp, path) < 0) {
-        unlink(tmp);
-        return false;
-    }
-    return true;
+    return peri_write_file_atomic(path, text, (size_t)len);
 }
 
 bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look)
