@@ -48,6 +48,18 @@ struct peri_look_field {
     const char *value;
 };
 
+// Which of the five settings a request has already given. Zero means none.
+struct peri_look_seen {
+    bool effect, color, color2, speed, brightness;
+};
+
+// "effect=static" is one look setting. True, and *field filled, when token is
+// one that *seen has not recorded yet; *seen then records it. False when the
+// token is not a look setting or that setting was already given: both are a
+// usage error for the caller, so a second effect= is not a different failure
+// from an unknown word. color2 is recognized as itself, not as color.
+bool peri_look_take(const char *token, struct peri_look_seen *seen, struct peri_look_field *field);
+
 // Copy the fields into *raw. The first value that cannot be stored is the
 // reason (unknown effect, a colour that is not six hex digits, a speed other
 // than slow or fast, a brightness outside 0-255), walking the list in order.

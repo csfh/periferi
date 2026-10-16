@@ -88,6 +88,35 @@ static bool clean(const struct peri_look *in, struct peri_look *out)
 static const char look_effect_problem[] =
     "effect must be none, static, breathing, spectrum, wave or wave-reverse";
 
+bool peri_look_take(const char *token, struct peri_look_seen *seen, struct peri_look_field *field)
+{
+    if (!token || !seen || !field)
+        return false;
+    // color2 before color: a shorter prefix would not see the "2".
+    struct {
+        const char *key;
+        size_t eq;
+        bool *slot;
+    } keys[] = {
+        { "color2", 7, &seen->color2 },
+        { "effect", 7, &seen->effect },
+        { "color", 6, &seen->color },
+        { "speed", 6, &seen->speed },
+        { "brightness", 11, &seen->brightness },
+    };
+    for (size_t i = 0; i < sizeof keys / sizeof *keys; i++) {
+        if (strncmp(token, keys[i].key, keys[i].eq - 1) != 0 || token[keys[i].eq - 1] != '=')
+            continue;
+        if (*keys[i].slot)
+            return false;
+        *keys[i].slot = true;
+        field->key = keys[i].key;
+        field->value = token + keys[i].eq;
+        return true;
+    }
+    return false;
+}
+
 // The first field that is not a single look setting. Order is the user's, so
 // the reason names the setting they wrote first.
 const char *peri_look_read(const struct peri_look_field *fields, size_t count, struct peri_look *raw)

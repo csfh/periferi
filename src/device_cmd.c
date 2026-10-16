@@ -670,36 +670,13 @@ void set_handle(const char *args, char *reply, size_t size)
     // an effect. The values are judged before any device is opened.
     struct peri_look_field fields[5];
     size_t nfields = 0;
-    bool saw_effect = false, saw_color = false, saw_color2 = false, saw_speed = false,
-         saw_brightness = false;
+    struct peri_look_seen seen = { 0 };
     for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
-        const char *key = nullptr;
-        const char *value = nullptr;
-        if (strncmp(t, "speed=", 6) == 0 && !saw_speed) {
-            key = "speed";
-            value = t + 6;
-            saw_speed = true;
-        } else if (strncmp(t, "brightness=", 11) == 0 && !saw_brightness) {
-            key = "brightness";
-            value = t + 11;
-            saw_brightness = true;
-        } else if (strncmp(t, "effect=", 7) == 0 && !saw_effect) {
-            key = "effect";
-            value = t + 7;
-            saw_effect = true;
-        } else if (strncmp(t, "color=", 6) == 0 && !saw_color) {
-            key = "color";
-            value = t + 6;
-            saw_color = true;
-        } else if (strncmp(t, "color2=", 7) == 0 && !saw_color2) {
-            key = "color2";
-            value = t + 7;
-            saw_color2 = true;
-        } else {
+        if (nfields >= 5 || !peri_look_take(t, &seen, &fields[nfields])) {
             snprintf(reply, size, "%s", usage);
             return;
         }
-        fields[nfields++] = (struct peri_look_field){ key, value };
+        nfields++;
     }
     struct peri_look raw = PERI_LOOK_EMPTY;
     if (nfields > 0) {
@@ -901,40 +878,13 @@ void look_handle(const char *args, char *reply, size_t size)
     // the settings belong together is the look module's rule, once a module is known.
     struct peri_look_field fields[5];
     size_t nfields = 0;
-    bool saw_effect = false, saw_color = false, saw_color2 = false, saw_speed = false,
-         saw_brightness = false;
+    struct peri_look_seen seen = { 0 };
     for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
-        if (!save) {
+        if (!save || nfields >= 5 || !peri_look_take(t, &seen, &fields[nfields])) {
             snprintf(reply, size, "%s", usage);
             return;
         }
-        const char *key = nullptr;
-        const char *value = nullptr;
-        if (strncmp(t, "effect=", 7) == 0 && !saw_effect) {
-            key = "effect";
-            value = t + 7;
-            saw_effect = true;
-        } else if (strncmp(t, "color=", 6) == 0 && !saw_color) {
-            key = "color";
-            value = t + 6;
-            saw_color = true;
-        } else if (strncmp(t, "speed=", 6) == 0 && !saw_speed) {
-            key = "speed";
-            value = t + 6;
-            saw_speed = true;
-        } else if (strncmp(t, "color2=", 7) == 0 && !saw_color2) {
-            key = "color2";
-            value = t + 7;
-            saw_color2 = true;
-        } else if (strncmp(t, "brightness=", 11) == 0 && !saw_brightness) {
-            key = "brightness";
-            value = t + 11;
-            saw_brightness = true;
-        } else {
-            snprintf(reply, size, "%s", usage);
-            return;
-        }
-        fields[nfields++] = (struct peri_look_field){ key, value };
+        nfields++;
     }
     struct peri_look raw = PERI_LOOK_EMPTY;
     if (nfields > 0) {

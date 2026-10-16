@@ -69,6 +69,22 @@ int main(void)
     CHECK(strcmp(peri_look_which_name(UN), "unmuted") == 0
           && strcmp(peri_look_which_name(MU), "muted") == 0);
 
+    // The five settings, each once. color2 is not color, and a repeat is refused.
+    struct peri_look_seen seen = { 0 };
+    struct peri_look_field taken;
+    CHECK(peri_look_take("color2=ff0000", &seen, &taken));
+    CHECK(strcmp(taken.key, "color2") == 0 && strcmp(taken.value, "ff0000") == 0 && seen.color2
+          && !seen.color);
+    CHECK(peri_look_take("color=00ff00", &seen, &taken) && strcmp(taken.key, "color") == 0);
+    CHECK(peri_look_take("effect=wave", &seen, &taken) && seen.effect);
+    CHECK(peri_look_take("speed=fast", &seen, &taken) && seen.speed);
+    CHECK(peri_look_take("brightness=1", &seen, &taken) && strcmp(taken.value, "1") == 0);
+    CHECK(!peri_look_take("effect=none", &seen, &taken));
+    CHECK(!peri_look_take("follow=on", &seen, &taken));
+    CHECK(!peri_look_take("color2", &seen, &taken));
+    CHECK(!peri_look_take(nullptr, &seen, &taken));
+    CHECK(!peri_look_take("effect=none", nullptr, &taken));
+
     // The request's look rules, with no file and no device. A bad value is named
     // in the order it was written; what would be stored drops what the effect
     // does not take.
