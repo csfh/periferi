@@ -41,6 +41,27 @@ bool peri_look_dir(char *buf, size_t size);
 bool peri_look_which_parse(const char *name, enum peri_look_which *which);
 const char *peri_look_which_name(enum peri_look_which which);
 
+// One setting of a look save, in the order the user wrote them. key is
+// "effect", "color", "color2", "speed" or "brightness".
+struct peri_look_field {
+    const char *key;
+    const char *value;
+};
+
+// Copy the fields into *raw. The first value that cannot be stored is the
+// reason (unknown effect, a colour that is not six hex digits, a speed other
+// than slow or fast, a brightness outside 0-255), walking the list in order.
+// Null if every field is well-formed. A repeated key overwrites. This does not
+// yet ask whether the fields belong together.
+const char *peri_look_read(const struct peri_look_field *fields, size_t count, struct peri_look *raw);
+
+// What would be stored. Static needs a colour, and a second colour needs a
+// first: those are reasons, not silent drops, so a request cannot lose a
+// colour it was given. A colour or a speed the effect does not take is
+// dropped, and a colour is lowercase. Null on success. The module's brightness
+// limit is not applied here.
+const char *peri_look_stored(const struct peri_look *raw, struct peri_look *out);
+
 // Save one look, keeping the other as it is. Atomic (temp file, then rename). False on any
 // problem, including an invalid module id, effect, colour or brightness; the file is then left
 // as it was. "static" needs a colour; effects that take no colour drop any given, and a second

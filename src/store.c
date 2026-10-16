@@ -85,6 +85,67 @@ static bool clean(const struct peri_look *in, struct peri_look *out)
     return true;
 }
 
+static const char look_effect_problem[] =
+    "effect must be none, static, breathing, spectrum, wave or wave-reverse";
+
+// The first field that is not a single look setting. Order is the user's, so
+// the reason names the setting they wrote first.
+const char *peri_look_read(const struct peri_look_field *fields, size_t count, struct peri_look *raw)
+{
+    if (count > 0 && !fields)
+        return "not a look setting";
+    struct peri_look built = PERI_LOOK_EMPTY;
+    for (size_t i = 0; i < count; i++) {
+        const char *key = fields[i].key;
+        const char *value = fields[i].value ? fields[i].value : "";
+        if (!key)
+            return "not a look setting";
+        if (strcmp(key, "effect") == 0) {
+            if (razer_effect_id(value) < 0 || strlen(value) >= sizeof built.effect)
+                return look_effect_problem;
+            snprintf(built.effect, sizeof built.effect, "%s", value);
+        } else if (strcmp(key, "color") == 0) {
+            if (!lower_hex(value, built.color))
+                return "color must be six hex digits, like 0000ff";
+        } else if (strcmp(key, "color2") == 0) {
+            if (!lower_hex(value, built.color2))
+                return "color2 must be six hex digits, like ff0000";
+        } else if (strcmp(key, "speed") == 0) {
+            if (strcmp(value, "slow") != 0 && strcmp(value, "fast") != 0)
+                return "speed must be slow or fast";
+            snprintf(built.speed, sizeof built.speed, "%s", value);
+        } else if (strcmp(key, "brightness") == 0) {
+            char *end = nullptr;
+            unsigned long v = strtoul(value, &end, 10);
+            if (value[0] == '\0' || !end || *end != '\0' || v > 255)
+                return "brightness must be a whole number from 0 to 255";
+            built.brightness = (int)v;
+        } else
+            return "not a look setting";
+    }
+    if (raw)
+        *raw = built;
+    return nullptr;
+}
+
+const char *peri_look_stored(const struct peri_look *raw, struct peri_look *out)
+{
+    if (!raw)
+        return "not a look setting";
+    // Asked for, so a request must say so. A file may still drop these: a hand
+    // edit is not a request, and load keeps the rest of that look.
+    if (raw->effect[0] && strcmp(raw->effect, "static") == 0 && !raw->color[0])
+        return "the static effect needs a color=<rrggbb>";
+    if (raw->color2[0] && !raw->color[0])
+        return "a second colour needs a first";
+    struct peri_look stored;
+    if (!clean(raw, &stored))
+        return look_effect_problem;
+    if (out)
+        *out = stored;
+    return nullptr;
+}
+
 static bool look_path(const char *module_id, char *dir, size_t dir_size, char *path, size_t size)
 {
     return module_id && peri_module_id_valid(module_id) && peri_look_dir(dir, dir_size)

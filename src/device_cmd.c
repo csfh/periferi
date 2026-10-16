@@ -902,49 +902,50 @@ void look_handle(const char *args, char *reply, size_t size)
     }
 
     // The settings of a save: the whole look, so anything left out is "not set". get and apply
-    // take none.
-    struct peri_look want = PERI_LOOK_EMPTY;
+    // take none. A value is judged before the module is required, so a typo is a typo; whether
+    // the settings belong together is the look module's rule, once a module is known.
+    struct peri_look_field fields[5];
+    size_t nfields = 0;
+    bool saw_effect = false, saw_color = false, saw_color2 = false, saw_speed = false,
+         saw_brightness = false;
     for (const char *t; (t = strtok_r(nullptr, " \n", &rest));) {
         if (!save) {
             snprintf(reply, size, "%s", usage);
             return;
         }
-        if (strncmp(t, "effect=", 7) == 0 && !want.effect[0]) {
-            if (razer_effect_id(t + 7) < 0 || strlen(t + 7) >= sizeof want.effect) {
-                err(reply, size, effect_names, id);
-                return;
-            }
-            snprintf(want.effect, sizeof want.effect, "%s", t + 7);
-        } else if (strncmp(t, "color=", 6) == 0 && !want.color[0]) {
-            uint8_t rgb[3];
-            if (!parse_color(t + 6, rgb)) {
-                err(reply, size, "color must be six hex digits, like 0000ff", id);
-                return;
-            }
-            snprintf(want.color, sizeof want.color, "%s", t + 6);
-        } else if (strncmp(t, "speed=", 6) == 0 && !want.speed[0]) {
-            if (strcmp(t + 6, "slow") != 0 && strcmp(t + 6, "fast") != 0) {
-                err(reply, size, "speed must be slow or fast", id);
-                return;
-            }
-            snprintf(want.speed, sizeof want.speed, "%s", t + 6);
-        } else if (strncmp(t, "color2=", 7) == 0 && !want.color2[0]) {
-            uint8_t rgb[3];
-            if (!parse_color(t + 7, rgb)) {
-                err(reply, size, "color2 must be six hex digits, like ff0000", id);
-                return;
-            }
-            snprintf(want.color2, sizeof want.color2, "%s", t + 7);
-        } else if (strncmp(t, "brightness=", 11) == 0 && want.brightness < 0) {
-            char *end;
-            unsigned long v = strtoul(t + 11, &end, 10);
-            if (t[11] == '\0' || *end != '\0' || v > 255) {
-                err(reply, size, "brightness must be a whole number from 0 to 255", id);
-                return;
-            }
-            want.brightness = (int)v;
+        const char *key = nullptr;
+        const char *value = nullptr;
+        if (strncmp(t, "effect=", 7) == 0 && !saw_effect) {
+            key = "effect";
+            value = t + 7;
+            saw_effect = true;
+        } else if (strncmp(t, "color=", 6) == 0 && !saw_color) {
+            key = "color";
+            value = t + 6;
+            saw_color = true;
+        } else if (strncmp(t, "speed=", 6) == 0 && !saw_speed) {
+            key = "speed";
+            value = t + 6;
+            saw_speed = true;
+        } else if (strncmp(t, "color2=", 7) == 0 && !saw_color2) {
+            key = "color2";
+            value = t + 7;
+            saw_color2 = true;
+        } else if (strncmp(t, "brightness=", 11) == 0 && !saw_brightness) {
+            key = "brightness";
+            value = t + 11;
+            saw_brightness = true;
         } else {
             snprintf(reply, size, "%s", usage);
+            return;
+        }
+        fields[nfields++] = (struct peri_look_field){ key, value };
+    }
+    struct peri_look raw = PERI_LOOK_EMPTY;
+    if (nfields > 0) {
+        const char *why = peri_look_read(fields, nfields, &raw);
+        if (why) {
+            err(reply, size, why, id);
             return;
         }
     }
@@ -960,12 +961,10 @@ void look_handle(const char *args, char *reply, size_t size)
     }
 
     if (save) {
-        if (want.effect[0] && strcmp(want.effect, "static") == 0 && !want.color[0]) {
-            err(reply, size, "the static effect needs a color=<rrggbb>", id);
-            return;
-        }
-        if (want.color2[0] && !want.color[0]) {
-            err(reply, size, "a second colour needs a first", id);
+        struct peri_look want;
+        const char *why = peri_look_stored(&raw, &want);
+        if (why) {
+            err(reply, size, why, id);
             return;
         }
         if (want.brightness >= 0 && (m.max_brightness == 0 || want.brightness > m.max_brightness)) {

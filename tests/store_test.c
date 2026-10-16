@@ -69,6 +69,52 @@ int main(void)
     CHECK(strcmp(peri_look_which_name(UN), "unmuted") == 0
           && strcmp(peri_look_which_name(MU), "muted") == 0);
 
+    // The request's look rules, with no file and no device. A bad value is named
+    // in the order it was written; what would be stored drops what the effect
+    // does not take.
+    struct peri_look got;
+    CHECK(peri_look_read(nullptr, 0, &got) == nullptr && got.brightness == -1 && got.effect[0] == '\0');
+    struct peri_look_field static_blue[] = {
+        { "effect", "static" }, { "color", "0000FF" }, { "brightness", "102" },
+    };
+    CHECK(peri_look_read(static_blue, 3, &got) == nullptr);
+    const char *why = peri_look_stored(&got, &got);
+    CHECK(why == nullptr && strcmp(got.effect, "static") == 0 && strcmp(got.color, "0000ff") == 0
+          && got.brightness == 102 && got.color2[0] == '\0');
+
+    struct peri_look_field bad_first[] = { { "speed", "warp" }, { "color", "zz" } };
+    CHECK(strcmp(peri_look_read(bad_first, 2, &got), "speed must be slow or fast") == 0);
+    struct peri_look_field bad_color_first[] = { { "color", "zz" }, { "speed", "warp" } };
+    CHECK(strcmp(peri_look_read(bad_color_first, 2, &got), "color must be six hex digits, like 0000ff") == 0);
+    struct peri_look_field unknown_effect[] = { { "effect", "rainbow" } };
+    CHECK(strcmp(peri_look_read(unknown_effect, 1, &got),
+                 "effect must be none, static, breathing, spectrum, wave or wave-reverse") == 0);
+    struct peri_look_field bad_bright[] = { { "brightness", "256" } };
+    CHECK(strcmp(peri_look_read(bad_bright, 1, &got), "brightness must be a whole number from 0 to 255") == 0);
+    struct peri_look_field bad_c2[] = { { "color2", "12345" } };
+    CHECK(strcmp(peri_look_read(bad_c2, 1, &got), "color2 must be six hex digits, like ff0000") == 0);
+    CHECK(strcmp(peri_look_read(nullptr, 1, &got), "not a look setting") == 0);
+
+    struct peri_look_field just_static[] = { { "effect", "static" } };
+    CHECK(peri_look_read(just_static, 1, &got) == nullptr);
+    CHECK(strcmp(peri_look_stored(&got, &got), "the static effect needs a color=<rrggbb>") == 0);
+    struct peri_look_field second_only[] = { { "effect", "breathing" }, { "color2", "ff0000" } };
+    CHECK(peri_look_read(second_only, 2, &got) == nullptr);
+    CHECK(strcmp(peri_look_stored(&got, &got), "a second colour needs a first") == 0);
+
+    struct peri_look_field wave[] = { { "effect", "wave-reverse" }, { "speed", "fast" }, { "color", "aabbcc" } };
+    CHECK(peri_look_read(wave, 3, &got) == nullptr && peri_look_stored(&got, &got) == nullptr);
+    CHECK(strcmp(got.effect, "wave-reverse") == 0 && strcmp(got.speed, "fast") == 0 && got.color[0] == '\0');
+    struct peri_look_field spectrum_speed[] = { { "effect", "spectrum" }, { "speed", "slow" } };
+    CHECK(peri_look_read(spectrum_speed, 2, &got) == nullptr && peri_look_stored(&got, &got) == nullptr);
+    CHECK(strcmp(got.effect, "spectrum") == 0 && got.speed[0] == '\0');
+    struct peri_look_field two[] = {
+        { "effect", "breathing" }, { "color", "00FF00" }, { "color2", "FF0000" },
+    };
+    CHECK(peri_look_read(two, 3, &got) == nullptr && peri_look_stored(&got, &got) == nullptr);
+    CHECK(strcmp(got.color, "00ff00") == 0 && strcmp(got.color2, "ff0000") == 0);
+    CHECK(peri_look_stored(nullptr, &got) != nullptr);
+
     // Nothing saved yet: both looks are empty, which is not the effect "none" (Off).
     CHECK(is_empty(peri_look_load(ID, UN)) && is_empty(peri_look_load(ID, MU)));
 
