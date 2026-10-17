@@ -795,7 +795,7 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
         int mfd = open_module_device(id, &mdev, reply, size);
         if (mfd < 0)
             return;
-        int mrc = razer_set_mute_color(mfd, rgb);
+        int mrc = razer_set_mute_color(mfd, RAZER_STORE_FLASH, rgb);
         close(mfd);
         if (mrc != 0) {
             char why[96], text[200];
@@ -804,7 +804,7 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
             err(reply, size, text, id);
             return;
         }
-        snprintf(reply, size, "ok module=%s applied=muted effect=static color=%s brightness=-\n", id, l.color);
+        snprintf(reply, size, "ok module=%s applied=muted effect=static color=%s brightness=- storage=kept\n", id, l.color);
         return;
     }
     if (l.brightness >= 0 && (m->max_brightness == 0 || l.brightness > m->max_brightness)) {
@@ -825,7 +825,7 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
     if (fd < 0)
         return;
     int effect_rc = l.effect[0]
-        ? razer_set_effect_opts(fd, RAZER_STORE_NONE, (uint8_t)effect_checked, &opts) : 0;
+        ? razer_set_effect_opts(fd, RAZER_STORE_FLASH, (uint8_t)effect_checked, &opts) : 0;
     if (effect_rc != 0) {
         close(fd);
         char why[96], text[200];
@@ -836,8 +836,8 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
     }
     uint8_t now = 0;
     if (l.brightness >= 0
-        && (razer_set_brightness(fd, RAZER_STORE_NONE, (uint8_t)l.brightness) != 0
-            || razer_brightness(fd, RAZER_STORE_NONE, &now) != 0)) {
+        && (razer_set_brightness(fd, RAZER_STORE_FLASH, (uint8_t)l.brightness) != 0
+            || razer_brightness(fd, RAZER_STORE_FLASH, &now) != 0)) {
         close(fd);
         err(reply, size, l.effect[0] ? "the effect was applied but the device did not accept the brightness"
                                      : "the device did not accept the brightness", id);
@@ -847,7 +847,7 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
     char shown[8] = "-";
     if (l.brightness >= 0)
         snprintf(shown, sizeof shown, "%u", now);
-    snprintf(reply, size, "ok module=%s applied=%s effect=%s brightness=%s\n", id,
+    snprintf(reply, size, "ok module=%s applied=%s effect=%s brightness=%s storage=kept\n", id,
              peri_look_which_name(which), l.effect[0] ? l.effect : "-", shown);
 }
 

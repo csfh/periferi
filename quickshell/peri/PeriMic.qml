@@ -395,7 +395,7 @@ Scope {
       onStreamFinished: {
         var v = L.parseValues(this.text)
         root.traceText("OUT", "apply", this.text)
-        if (v.applied) state.notice = "Sent the " + M.lookLabel(v.applied).toLowerCase() + " to the microphone."
+        if (v.applied) state.notice = "Sent the " + M.lookLabel(v.applied).toLowerCase() + " to the microphone, which keeps it."
       }
     }
     stderr: StdioCollector {

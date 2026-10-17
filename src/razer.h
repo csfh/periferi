@@ -98,12 +98,13 @@ size_t razer_effect_args(uint8_t storage, uint8_t effect, const uint8_t rgb[3],
 // owner's mic on 2026-10-16 by sending different colours to ranges of zone numbers (1 to ff) and
 // asking which colour showed, narrowing 255 numbers to this one in four rounds, then confirmed by
 // writing orange and red there. The unmuted ring is unaffected. Only a static colour counts there:
-// spectrum and breathing sent to this zone changed nothing. Whether it survives a power cycle is not known.
+// spectrum and breathing sent to this zone changed nothing.
 #define RAZER_ZONE_MUTE 0x19
 
-// The arguments of that write: the static-colour effect frame aimed at RAZER_ZONE_MUTE, storage 0.
-// Returns the data size (9).
-size_t razer_mute_color_args(const uint8_t rgb[3], uint8_t args[RAZER_EFFECT_ARGS_MAX]);
+// The arguments of that write: the static-colour effect frame aimed at RAZER_ZONE_MUTE. `storage` is 0 for
+// "now only" (lost on a replug) or 1 to keep it; verified on the real mic on 2026-10-16: with 1 the muted
+// colour and the unmuted look both came back after a replug. Returns the data size (9).
+size_t razer_mute_color_args(uint8_t storage, const uint8_t rgb[3], uint8_t args[RAZER_EFFECT_ARGS_MAX]);
 
 // What the mic's controls report on the control interface, as input report 5 (16 bytes with the
 // id), seen in passive captures on 2026-10-14. Nothing here reads them: the daemon watches no

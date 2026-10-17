@@ -184,14 +184,19 @@ int main(void)
     const uint8_t mute_expect[9] = { 0x00, RAZER_ZONE_MUTE, 0x01, 0x00, 0x00, 0x01, 0xff, 0x00, 0x00 };
     uint8_t mute_args[RAZER_EFFECT_ARGS_MAX];
     check(RAZER_ZONE_MUTE == 0x19, "the muted zone is 0x19");
-    check(razer_mute_color_args(mute_red, mute_args) == 9 && memcmp(mute_args, mute_expect, 9) == 0,
+    check(razer_mute_color_args(0, mute_red, mute_args) == 9 && memcmp(mute_args, mute_expect, 9) == 0,
           "muted colour frame");
     const uint8_t mute_orange[3] = { 0xff, 0x80, 0x00 };
-    check(razer_mute_color_args(mute_orange, mute_args) == 9 && mute_args[1] == 0x19 && mute_args[7] == 0x80,
+    check(razer_mute_color_args(0, mute_orange, mute_args) == 9 && mute_args[1] == 0x19 && mute_args[7] == 0x80,
           "muted colour carries the colour");
     check(razer_encode(frame, 0x52, 0x0f, 0x02, mute_args, 9) == 0 && frame[6] == 9 && frame[9] == 0x00
               && frame[10] == 0x19,
           "muted colour as a whole frame");
+    // Kept in the microphone's memory (storage 1): the arguments the real mic echoed for orange, which
+    // came back after a replug.
+    const uint8_t mute_kept_expect[9] = { 0x01, RAZER_ZONE_MUTE, 0x01, 0x00, 0x00, 0x01, 0xff, 0x80, 0x00 };
+    check(razer_mute_color_args(1, mute_orange, mute_args) == 9 && memcmp(mute_args, mute_kept_expect, 9) == 0,
+          "kept muted colour frame");
 
     uint8_t big[RAZER_REQUEST_ARGS_MAX + 1] = { 0 };
     check(razer_encode(frame, 0x52, 0, 0, big, RAZER_REQUEST_ARGS_MAX) == 0, "54 args fit");

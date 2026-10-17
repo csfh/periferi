@@ -97,9 +97,9 @@ size_t razer_effect_build(uint8_t storage, uint8_t effect, const struct razer_ef
     }
 }
 
-size_t razer_mute_color_args(const uint8_t rgb[3], uint8_t args[RAZER_EFFECT_ARGS_MAX])
+size_t razer_mute_color_args(uint8_t storage, const uint8_t rgb[3], uint8_t args[RAZER_EFFECT_ARGS_MAX])
 {
-    size_t size = razer_effect_args(0x00, RAZER_EFFECT_STATIC, rgb, args);
+    size_t size = razer_effect_args(storage, RAZER_EFFECT_STATIC, rgb, args);
     if (size == 0)
         return 0;
     args[1] = RAZER_ZONE_MUTE;

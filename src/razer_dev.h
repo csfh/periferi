@@ -17,8 +17,9 @@ int razer_call(int fd, uint8_t cls, uint8_t cmd, size_t data_size, const uint8_t
                struct razer_reply *reply, uint8_t raw[RAZER_REPORT_LEN], int *got);
 
 // Where a brightness value goes (the "variable storage" argument of the command).
-#define RAZER_STORE_NONE 0x00  // asks for "now only"; the Seiren kept the value anyway (2026-10-14)
-#define RAZER_STORE_FLASH 0x01 // the value the device keeps; writing it wears its memory
+#define RAZER_STORE_NONE 0x00  // "now only": lost when the microphone is replugged (verified 2026-10-16)
+#define RAZER_STORE_FLASH 0x01 // kept across a replug (verified 2026-10-16 for the effect, the muted colour
+                               // and the brightness); writing it wears the microphone's own memory
 
 // The status byte of the last reply a query in this file got, whether it was ok or not (0 if the
 // last one got none). It is what the device said, so an error can say so.
@@ -35,7 +36,8 @@ int razer_set_brightness(int fd, uint8_t storage, uint8_t brightness);
 int razer_set_effect(int fd, uint8_t storage, uint8_t effect, const uint8_t rgb[3]);
 
 // Set the colour the microphone shows while it is muted (see RAZER_ZONE_MUTE). The unmuted ring is not touched.
-int razer_set_mute_color(int fd, const uint8_t rgb[3]);
+// With RAZER_STORE_FLASH the microphone keeps it across a replug.
+int razer_set_mute_color(int fd, uint8_t storage, const uint8_t rgb[3]);
 
 // The same with every parameter an effect can take (two colours, a direction, a speed).
 int razer_set_effect_opts(int fd, uint8_t storage, uint8_t effect, const struct razer_effect_opts *opts);
