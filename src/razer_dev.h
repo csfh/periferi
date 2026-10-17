@@ -31,13 +31,10 @@ int razer_firmware(int fd, uint8_t version[2]);
 int razer_brightness(int fd, uint8_t storage, uint8_t *brightness);
 int razer_set_brightness(int fd, uint8_t storage, uint8_t brightness);
 
-// Set the lighting effect (class 0x0f, command 0x02), see razer_effect_args() for `rgb`. The
-// device keeps no read-back of the effect, so the caller must know what to restore.
-int razer_set_effect(int fd, uint8_t storage, uint8_t effect, const uint8_t rgb[3]);
-
 // Set the colour the microphone shows while it is muted (see RAZER_ZONE_MUTE). The unmuted ring is not touched.
 // With RAZER_STORE_FLASH the microphone keeps it across a replug.
 int razer_set_mute_color(int fd, uint8_t storage, const uint8_t rgb[3]);
 
-// The same with every parameter an effect can take (two colours, a direction, a speed).
+// Set the lighting effect (class 0x0f, command 0x02) with every parameter an effect can take (two colours, a
+// direction, a speed). The device keeps no read-back of the effect, so the caller must know what to restore.
 int razer_set_effect_opts(int fd, uint8_t storage, uint8_t effect, const struct razer_effect_opts *opts);
