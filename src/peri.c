@@ -698,7 +698,7 @@ static int cmd_razer_display_set(const char *arg, const char *module, const char
 // 0x90 to 0x9f (the high bit is the getter convention), for six zero argument bytes and print what the
 // device says, including "not supported". The two ids already known have their own queries. Bounds are
 // checked before the device is opened. Only ever a getter: no id below 0x90 can be reached.
-static int cmd_razer_getter(const char *arg, const char *id_text)
+static int cmd_razer_getter(const char *arg, const char *id_text, const char *module)
 {
     const char *name = node_name(arg);
     if (!name)
@@ -710,9 +710,18 @@ static int cmd_razer_getter(const char *arg, const char *id_text)
         fprintf(stderr, "peri: getter takes one class 0f id from 90 to 9f in hex, other than 92 and 93\n");
         return 2;
     }
+    uint8_t args[6] = { 0 };
+    if (module) {
+        // Only 0x94 takes a module (one digit 0-7), laid out like the display switch: 01, module, zeros.
+        if (id != 0x94 || module[0] < '0' || module[0] > '7' || module[1] != '\0') {
+            fprintf(stderr, "peri: only getter 94 takes a module, one digit from 0 to 7\n");
+            return 2;
+        }
+        args[0] = 0x01;
+        args[1] = (uint8_t)(module[0] - '0');
+    }
     if (!node_allowed(name, false))
         return 1;
-    const uint8_t args[6] = { 0 };
     return razer_send_and_print(name, 0x0f, (uint8_t)id, 6, args);
 }
 
@@ -1241,8 +1250,8 @@ int main(int argc, char **argv)
     if ((argc == 4 || argc == 5) && strcmp(argv[1], "feature") == 0)
         return cmd_feature(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
 
-    if (argc == 5 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "getter") == 0)
-        return cmd_razer_getter(argv[2], argv[4]);
+    if ((argc == 5 || argc == 6) && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "getter") == 0)
+        return cmd_razer_getter(argv[2], argv[4], argc == 6 ? argv[5] : nullptr);
 
     if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "display-set") == 0)
         return cmd_razer_display_set(argv[2], argv[4], argv[5]);
@@ -1280,6 +1289,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|getter <90-9f>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|getter <90-9f> [module 0-7, 94 only]|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
