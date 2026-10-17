@@ -299,6 +299,29 @@ const char *peri_look_muted_problem(const struct peri_look *look)
     return nullptr;
 }
 
+bool peri_look_muted_color(const struct peri_look *muted, const struct peri_look *unmuted, char out[7],
+                           bool *nudged)
+{
+    out[0] = '\0';
+    if (nudged)
+        *nudged = false;
+    char mine[7];
+    if (!muted || strcmp(muted->effect, "static") != 0 || !lower_hex(muted->color, mine))
+        return false;
+    char theirs[7];
+    bool same = unmuted && strcmp(unmuted->effect, "static") == 0 && lower_hex(unmuted->color, theirs)
+                && strcmp(mine, theirs) == 0;
+    if (same) {
+        unsigned blue = (unsigned)strtoul(mine + 4, nullptr, 16);
+        blue = blue == 0xff ? 0xfe : blue + 1;
+        snprintf(mine + 4, 3, "%02x", blue);
+        if (nudged)
+            *nudged = true;
+    }
+    memcpy(out, mine, 7);
+    return true;
+}
+
 bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look)
 {
     struct peri_look mine;

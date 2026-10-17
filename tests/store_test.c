@@ -257,6 +257,22 @@ int main(void)
     CHECK(peri_look_muted_problem(&m_only_b) != nullptr);
     CHECK(peri_look_muted_problem(nullptr) != nullptr);
 
+    // The firmware darkens the muted ring when its colour equals a static Unmuted look's colour, so that case is
+    // sent one step off in blue; anything else goes as it is.
+    char wire[7];
+    bool moved;
+    struct peri_look yel = look("static", "ffff00", -1), yel_un = look("static", "FFFF00", 255),
+                     red_un = look("static", "ff0000", 255), spec_un = look("spectrum", "", 255),
+                     ff_blue = look("static", "0000ff", -1), blue_un = look("static", "0000ff", 255);
+    CHECK(peri_look_muted_color(&yel, &yel_un, wire, &moved) && moved && strcmp(wire, "ffff01") == 0);
+    CHECK(peri_look_muted_color(&yel, &red_un, wire, &moved) && !moved && strcmp(wire, "ffff00") == 0);
+    CHECK(peri_look_muted_color(&yel, &spec_un, wire, &moved) && !moved && strcmp(wire, "ffff00") == 0);
+    CHECK(peri_look_muted_color(&yel, nullptr, wire, &moved) && !moved && strcmp(wire, "ffff00") == 0);
+    CHECK(peri_look_muted_color(&ff_blue, &blue_un, wire, &moved) && moved && strcmp(wire, "0000fe") == 0);
+    struct peri_look not_static = look("wave", "", -1);
+    CHECK(!peri_look_muted_color(&not_static, &yel_un, wire, &moved) && wire[0] == '\0' && !moved);
+    CHECK(!peri_look_muted_color(nullptr, &yel_un, wire, nullptr));
+
     // A file written while the daemon still followed the mute state starts with a flag. It is
     // ignored: both looks load, and the next save writes the file without it.
     write_file(file, "follow_mute = false\n\n[unmuted]\neffect = \"spectrum\"\nbrightness = 255\n\n"

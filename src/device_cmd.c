@@ -786,8 +786,13 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
     // unmuted ring and the brightness are left alone. An old file may still hold a brightness or another
     // effect there; they are not sent.
     if (which == PERI_LOOK_MUTED) {
+        // The firmware darkens the muted ring when its colour is exactly the Unmuted look's static colour, so
+        // that case is sent one step off (see peri_look_muted_color).
+        struct peri_look unmuted_saved = peri_look_load(id, PERI_LOOK_UNMUTED);
+        char wire[7];
+        bool nudged;
         uint8_t rgb[3];
-        if (strcmp(l.effect, "static") != 0 || !parse_color(l.color, rgb)) {
+        if (!peri_look_muted_color(&l, &unmuted_saved, wire, &nudged) || !parse_color(wire, rgb)) {
             err(reply, size, "the muted look needs a static colour: save effect=static color=<rrggbb>", id);
             return;
         }
@@ -804,7 +809,8 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
             err(reply, size, text, id);
             return;
         }
-        snprintf(reply, size, "ok module=%s applied=muted effect=static color=%s brightness=- storage=kept\n", id, l.color);
+        snprintf(reply, size, "ok module=%s applied=muted effect=static color=%s brightness=- storage=kept%s\n", id,
+                 wire, nudged ? " nudged=yes" : "");
         return;
     }
     if (l.brightness >= 0 && (m->max_brightness == 0 || l.brightness > m->max_brightness)) {
@@ -843,12 +849,24 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
                                      : "the device did not accept the brightness", id);
         return;
     }
+    // A static Unmuted look that is exactly the saved muted colour would darken the muted ring, and the microphone
+    // may still hold the unadjusted muted colour: send the one-step-off muted colour again (see peri_look_muted_color).
+    bool muted_again = false;
+    {
+        struct peri_look muted_saved = peri_look_load(id, PERI_LOOK_MUTED);
+        char wire[7];
+        bool nudged;
+        uint8_t rgb[3];
+        if (peri_look_muted_color(&muted_saved, &l, wire, &nudged) && nudged && parse_color(wire, rgb))
+            muted_again = razer_set_mute_color(fd, RAZER_STORE_FLASH, rgb) == 0;
+    }
     close(fd);
     char shown[8] = "-";
     if (l.brightness >= 0)
         snprintf(shown, sizeof shown, "%u", now);
-    snprintf(reply, size, "ok module=%s applied=%s effect=%s brightness=%s storage=kept\n", id,
-             peri_look_which_name(which), l.effect[0] ? l.effect : "-", shown);
+    snprintf(reply, size, "ok module=%s applied=%s effect=%s brightness=%s storage=kept%s\n", id,
+             peri_look_which_name(which), l.effect[0] ? l.effect : "-", shown,
+             muted_again ? " muted_adjusted=yes" : "");
 }
 
 void look_handle(const char *args, char *reply, size_t size)

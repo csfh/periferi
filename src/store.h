@@ -86,6 +86,14 @@ bool peri_look_save(const char *module_id, enum peri_look_which which, const str
 // ring. Null if `look` can be the muted look (an empty one clears it); otherwise the reason.
 const char *peri_look_muted_problem(const struct peri_look *look);
 
+// The colour to send as the muted colour. The firmware darkens the muted ring when that colour is exactly the
+// colour of a static Unmuted look (seen by the owner on 2026-10-16 with yellow, and with red before that), but
+// a colour one step away shows normally. So when both looks are the same static colour the muted one is sent
+// one step off in blue, which no eye can tell apart. `out` gets six lowercase hex digits and the result says
+// whether it was changed. False, with `out` empty, if the muted look is not a static colour.
+bool peri_look_muted_color(const struct peri_look *muted, const struct peri_look *unmuted, char out[7],
+                           bool *nudged);
+
 // A saved look, or an empty one when there is none, the file cannot be read, or what is in it is
 // not something this program would have written. A file in an older format loads as empty. Never
 // fails loudly; every field is validated again here.
