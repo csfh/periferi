@@ -782,6 +782,31 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
         err(reply, size, "nothing is saved for this look", id);
         return;
     }
+    // The muted look is the colour the firmware shows while muted: only that zone is written, so the
+    // unmuted ring and the brightness are left alone. An old file may still hold a brightness or another
+    // effect there; they are not sent.
+    if (which == PERI_LOOK_MUTED) {
+        uint8_t rgb[3];
+        if (strcmp(l.effect, "static") != 0 || !parse_color(l.color, rgb)) {
+            err(reply, size, "the muted look needs a static colour: save effect=static color=<rrggbb>", id);
+            return;
+        }
+        struct peri_module mdev;
+        int mfd = open_module_device(id, &mdev, reply, size);
+        if (mfd < 0)
+            return;
+        int mrc = razer_set_mute_color(mfd, rgb);
+        close(mfd);
+        if (mrc != 0) {
+            char why[96], text[200];
+            device_said(why, sizeof why, mrc);
+            snprintf(text, sizeof text, "the muted colour was not accepted (%s)", why);
+            err(reply, size, text, id);
+            return;
+        }
+        snprintf(reply, size, "ok module=%s applied=muted effect=static color=%s brightness=-\n", id, l.color);
+        return;
+    }
     if (l.brightness >= 0 && (m->max_brightness == 0 || l.brightness > m->max_brightness)) {
         err(reply, size, "the saved brightness is above the module's limit", id);
         return;
@@ -886,6 +911,13 @@ void look_handle(const char *args, char *reply, size_t size)
         if (why) {
             err(reply, size, why, id);
             return;
+        }
+        if (which == PERI_LOOK_MUTED) {
+            const char *problem = peri_look_muted_problem(&want);
+            if (problem) {
+                err(reply, size, problem, id);
+                return;
+            }
         }
         if (want.brightness >= 0 && (m.max_brightness == 0 || want.brightness > m.max_brightness)) {
             err(reply, size, "brightness is above the module's limit", id);

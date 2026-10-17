@@ -81,6 +81,11 @@ const char *peri_look_stored(const struct peri_look *raw, struct peri_look *out)
 // for the wave effects, and must be "slow" or "fast".
 bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look);
 
+// The muted look is what the microphone's firmware shows while it is muted, and it only takes a static colour
+// (RAZER_ZONE_MUTE): no other effect, and no brightness, since the microphone has one brightness for the
+// ring. Null if `look` can be the muted look (an empty one clears it); otherwise the reason.
+const char *peri_look_muted_problem(const struct peri_look *look);
+
 // A saved look, or an empty one when there is none, the file cannot be read, or what is in it is
 // not something this program would have written. A file in an older format loads as empty. Never
 // fails loudly; every field is validated again here.

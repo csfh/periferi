@@ -127,6 +127,16 @@ int razer_set_effect(int fd, uint8_t storage, uint8_t effect, const uint8_t rgb[
     return query(fd, 0x0f, 0x02, size, args, 0, &reply);
 }
 
+int razer_set_mute_color(int fd, const uint8_t rgb[3])
+{
+    uint8_t args[RAZER_EFFECT_ARGS_MAX];
+    size_t size = razer_mute_color_args(rgb, args);
+    if (size == 0)
+        return RAZER_ERR_ARGS;
+    struct razer_reply reply;
+    return query(fd, 0x0f, 0x02, size, args, 0, &reply);
+}
+
 int razer_set_effect_opts(int fd, uint8_t storage, uint8_t effect, const struct razer_effect_opts *opts)
 {
     uint8_t args[RAZER_EFFECT_ARGS_MAX];

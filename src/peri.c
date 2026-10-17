@@ -890,6 +890,50 @@ static int cmd_razer_brightness_census(const char *arg)
     return 0;
 }
 
+// A write: one of the standard effects (none, static, breathing, spectrum, wave, wave-reverse), with up to
+// two colours, sent to ONE zone number. Found by the owner's eye on 2026-10-16: zone 0x19 is the colour
+// the microphone shows while muted. Zones 1 to ff, storage 0 ("now"); checked before the device is opened.
+static int cmd_razer_zone_effect(const char *arg, const char *zone, const char *effect_name, const char *c1,
+                                 const char *c2, uint8_t storage)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+    char *zend = nullptr;
+    unsigned long z = zone && *zone ? strtoul(zone, &zend, 16) : 0;
+    bool reverse = false;
+    int effect = effect_name ? razer_effect_lookup(effect_name, &reverse) : -1;
+    bool ok = zone && strlen(zone) <= 2 && zend && *zend == '\0' && z >= 1 && z <= 0xff && effect >= 0 && storage <= 1;
+    const char *cols[2] = { c1, c2 };
+    struct razer_effect_opts opts = { 0 };
+    for (int i = 0; ok && i < 2; i++) {
+        if (!cols[i])
+            continue;
+        ok = strlen(cols[i]) == 6;
+        for (int j = 0; ok && j < 6; j++)
+            ok = isxdigit((unsigned char)cols[i][j]);
+        if (!ok)
+            break;
+        for (int k = 0; k < 3; k++) {
+            char pair[3] = { cols[i][2 * k], cols[i][2 * k + 1], '\0' };
+            opts.rgb[i][k] = (uint8_t)strtoul(pair, nullptr, 16);
+        }
+        opts.colors = (uint8_t)(i + 1);
+    }
+    opts.reverse = reverse ? 1 : 0;
+    uint8_t args[RAZER_EFFECT_ARGS_MAX];
+    size_t size = ok ? razer_effect_build(storage, (uint8_t)effect, &opts, args) : 0;
+    if (!ok || size == 0) {
+        fprintf(stderr, "peri: zone-effect takes a zone 1-ff, an effect (none static breathing spectrum wave "
+                        "wave-reverse) and the colours it needs\n");
+        return 2;
+    }
+    args[1] = (uint8_t)z;
+    if (!node_allowed(name, false))
+        return 1;
+    return razer_send_and_print(name, 0x0f, 0x02, (uint8_t)size, args);
+}
+
 static int cmd_razer_scan_getters(const char *arg)
 {
     const char *name = node_name(arg);
@@ -976,9 +1020,23 @@ static int cmd_razer_zone_static(const char *arg, const char *zone, const char *
     char *zend = nullptr;
     unsigned long zone_first = 0, zone_last = 0;
     bool ok = zone && *zone && rgb && strlen(rgb) == 6;
+    const char *dash = ok ? strchr(zone, '-') : nullptr;
     if (ok && strcmp(zone, "all") == 0) {
         zone_first = 2;
         zone_last = 0xff;
+    } else if (dash) {
+        // A range "lo-hi" in hex, each one or two digits, 1 <= lo <= hi <= ff.
+        char lo[3] = { 0 }, hi[3] = { 0 };
+        size_t lo_len = (size_t)(dash - zone), hi_len = strlen(dash + 1);
+        ok = lo_len >= 1 && lo_len <= 2 && hi_len >= 1 && hi_len <= 2;
+        if (ok) {
+            memcpy(lo, zone, lo_len);
+            memcpy(hi, dash + 1, hi_len);
+            char *e1 = nullptr, *e2 = nullptr;
+            zone_first = strtoul(lo, &e1, 16);
+            zone_last = strtoul(hi, &e2, 16);
+            ok = *e1 == '\0' && *e2 == '\0' && zone_first >= 1 && zone_first <= zone_last && zone_last <= 0xff;
+        }
     } else if (ok) {
         zone_first = zone_last = strtoul(zone, &zend, 16);
         ok = strlen(zone) <= 2 && *zend == '\0' && zone_first >= 1 && zone_first <= 0xff;
@@ -1554,6 +1612,10 @@ int main(int argc, char **argv)
     if (argc >= 5 && argc <= 7 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "class8") == 0)
         return cmd_razer_class8(argv[2], argv[4], argc >= 6 ? argv[5] : nullptr, argc == 7 ? argv[6] : nullptr);
 
+    if (argc >= 6 && argc <= 8 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "zone-effect") == 0)
+        return cmd_razer_zone_effect(argv[2], argv[4], argv[5], argc >= 7 ? argv[6] : nullptr,
+                                     argc == 8 ? argv[7] : nullptr, 0);
+
     if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "frame-fill") == 0)
         return cmd_razer_frame_fill(argv[2], argv[4], argv[5]);
 
@@ -1611,6 +1673,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0-7>|getter <90-9f> [module 0-7, 94 only]|color-set <ff0000|000000|10 hex digits>|zone-static <1-ff|all> <rrggbb>|scan-getters|brightness-census|frame-fill <rrggbb> <last 0-11>|effect-custom|class8 <id> [0-7 [0-7]]|profile-static <2-7> <rrggbb>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0-7>|getter <90-9f> [module 0-7, 94 only]|color-set <ff0000|000000|10 hex digits>|zone-static <1-ff|lo-hi|all> <rrggbb>|scan-getters|brightness-census|zone-effect <zone> <effect> [color [color2]]|frame-fill <rrggbb> <last 0-11>|effect-custom|class8 <id> [0-7 [0-7]]|profile-static <2-7> <rrggbb>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }

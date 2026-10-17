@@ -288,6 +288,17 @@ static bool write_state(const char *module_id, const struct peri_look looks[2])
     return peri_write_file_atomic(path, text, (size_t)len);
 }
 
+const char *peri_look_muted_problem(const struct peri_look *look)
+{
+    if (!look)
+        return "not a look setting";
+    if (look->effect[0] && strcmp(look->effect, "static") != 0)
+        return "the muted ring takes a static colour only: effect=static color=<rrggbb>";
+    if (look->brightness >= 0)
+        return "the muted look has no brightness of its own: the microphone has one brightness for the ring";
+    return nullptr;
+}
+
 bool peri_look_save(const char *module_id, enum peri_look_which which, const struct peri_look *look)
 {
     struct peri_look mine;

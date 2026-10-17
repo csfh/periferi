@@ -247,6 +247,16 @@ int main(void)
     write_file(file, "[unmuted]\neffect = \"spectrum\"\nspeed = \"fast\"\n");
     CHECK(peri_look_load(ID, UN).speed[0] == '\0');                    // a stray speed is ignored
 
+    // The muted look is a static colour and nothing else.
+    struct peri_look m_ok = look("static", "ff0000", -1), m_wave = look("wave", "", -1),
+                     m_bright = look("static", "ff0000", 38), m_only_b = look("", "", 10), m_empty = PERI_LOOK_EMPTY;
+    CHECK(peri_look_muted_problem(&m_ok) == nullptr);
+    CHECK(peri_look_muted_problem(&m_empty) == nullptr);   // an empty look clears it
+    CHECK(peri_look_muted_problem(&m_wave) != nullptr);
+    CHECK(peri_look_muted_problem(&m_bright) != nullptr);  // one brightness for the ring
+    CHECK(peri_look_muted_problem(&m_only_b) != nullptr);
+    CHECK(peri_look_muted_problem(nullptr) != nullptr);
+
     // A file written while the daemon still followed the mute state starts with a flag. It is
     // ignored: both looks load, and the next save writes the file without it.
     write_file(file, "follow_mute = false\n\n[unmuted]\neffect = \"spectrum\"\nbrightness = 255\n\n"
