@@ -601,6 +601,8 @@ static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[5];
     { "tap", 0x0f, 0x93, 4, { 0, 0, 0, 0, 0 }, 7 },
 };
 
+static int razer_send_and_print(const char *name, uint8_t cls, uint8_t cmd, uint8_t size, const uint8_t *args);
+
 // Send one allowlisted query to a Razer control interface and print the raw reply frame,
 // then what it decodes to. Anything that is not a clean reply is reported, never retried
 // by other means.
@@ -636,14 +638,20 @@ static int cmd_razer(const char *arg, const char *query, const char *select, con
     if (!node_allowed(name, false))
         return 1;
 
+    return razer_send_and_print(name, razer_queries[q].cls, razer_queries[q].cmd, razer_queries[q].size, args);
+}
+
+// Open the Seiren's control interface, send one frame and print the raw reply, then what it decodes
+// to. Returns 0 only for a reply whose status is ok.
+static int razer_send_and_print(const char *name, uint8_t cls, uint8_t cmd, uint8_t size, const uint8_t *args)
+{
     int fd = razer_open(name);
     if (fd < 0)
         return 1;
     struct razer_reply reply;
     uint8_t raw[RAZER_REPORT_LEN];
     int got;
-    int rc = razer_call(fd, razer_queries[q].cls, razer_queries[q].cmd, razer_queries[q].size,
-                        args, &reply, raw, &got);
+    int rc = razer_call(fd, cls, cmd, size, args, &reply, raw, &got);
     close(fd);
 
     if (got > 0) {
@@ -663,6 +671,27 @@ static int cmd_razer(const char *arg, const char *query, const char *select, con
         printf(" %02x", reply.args[i]);
     putchar('\n');
     return reply.status == RAZER_STATUS_OK ? 0 : 1;
+}
+
+// The one write `peri razer` can make: switch one of the four display modules (a public note for
+// the V3 Pro names them headphone, mic-gain, voice-activated and mute-effect; the order is unproven) on
+// or off. Class 0f, command 0x12, three bytes: 01, the module, 0 or 1 (the reads showed 01 <module> <1>
+// for modules 0 to 3). This may be kept in the microphone's own memory. The module and the value are
+// checked before the device is opened, and the caller reads the value first so it can put it back.
+static int cmd_razer_display_set(const char *arg, const char *module, const char *value)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+    if (!module || !value || module[0] < '0' || module[0] > '3' || module[1] != '\0'
+        || (value[0] != '0' && value[0] != '1') || value[1] != '\0') {
+        fprintf(stderr, "peri: display-set takes a module 0-3 and a value 0 or 1\n");
+        return 2;
+    }
+    if (!node_allowed(name, false))
+        return 1;
+    const uint8_t args[3] = { 0x01, (uint8_t)(module[0] - '0'), (uint8_t)(value[0] - '0') };
+    return razer_send_and_print(name, 0x0f, 0x12, 3, args);
 }
 
 // The queries `peri razer90` may send to the DeathAdder: reads only (firmware, battery, charging,
@@ -1190,6 +1219,9 @@ int main(int argc, char **argv)
     if ((argc == 4 || argc == 5) && strcmp(argv[1], "feature") == 0)
         return cmd_feature(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
 
+    if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "display-set") == 0)
+        return cmd_razer_display_set(argv[2], argv[4], argv[5]);
+
     if (argc >= 4 && argc <= 6 && strcmp(argv[1], "razer") == 0)
         return cmd_razer(argv[2], argv[3], argc >= 5 ? argv[4] : nullptr, argc == 6 ? argv[5] : nullptr);
 
@@ -1223,6 +1255,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
