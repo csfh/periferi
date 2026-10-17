@@ -11,15 +11,13 @@ var legend = [
   ["IGNORED", "a gesture or action that was deliberately not acted on, and why"],
   ["SAVE", "a look being saved: a file only, the microphone is not touched"],
   ["APPLY", "the Apply button: the one thing here that writes the look to the microphone"],
-  ["FOLLOW", "the Follow mute setting (a file only)"],
   ["AUDIO", "a sound-card level being set (live, not stored by peri)"],
   ["REFRESH", "the pane reading the microphone and the saved looks"],
   ["RUN", "a peri command starting, and what kind it is"],
   ["EXIT", "that command finishing: exit code and how long it took"],
   ["OUT", "what the command printed (shortened)"],
   ["ERR", "what the command printed on its error output (shortened)"],
-  ["STATE", "what the pane now holds after reading something"],
-  ["DAEMON", "lines from the peri daemon's journal about the microphone, copied when the log started"]
+  ["STATE", "what the pane now holds after reading something"]
 ]
 
 function two(n) { return (n < 10 ? "0" : "") + n }
@@ -70,9 +68,6 @@ function classify(args) {
       return { kind: "file", note: "FILE WRITE: saves the " + a[3] + " look (" + a.slice(4).join(" ") + "); the microphone is not touched" }
     if (what === "apply")
       return { kind: "mic", note: "MIC WRITE: sends the saved " + a[3] + " look to the microphone, its effect and then its brightness; the mic may keep it" }
-    if (what === "follow")
-      return { kind: a[3] === "get" ? "file-read" : "file", note: (a[3] === "get" ? "FILE READ" : "FILE WRITE")
-        + ": the Follow mute setting (" + a[3] + "); the microphone is not touched" }
   }
   return { kind: "other", note: "a peri command this log does not explain" }
 }
@@ -92,7 +87,7 @@ function describeAudio(a) {
 }
 
 // The first lines of a log: what it is, how to read it, and a snapshot of the pane. `info` has
-// when (a Date), path, module, periPath, editing, online, follow, looks, audio.
+// when (a Date), path, module, periPath, editing, online, looks, audio.
 function header(info) {
   var out = []
   out.push("peri pane debug log, started " + info.when.toString())
@@ -104,7 +99,7 @@ function header(info) {
   out.push("")
   out.push("What the pane held when the log started:")
   out.push("  editing: the " + info.editing + " look")
-  out.push("  microphone online: " + (info.online ? "yes" : "no") + "    follow mute: " + (info.follow ? "on" : "off"))
+  out.push("  microphone online: " + (info.online ? "yes" : "no"))
   out.push("  unmuted look: " + describeLook(info.looks && info.looks.unmuted))
   out.push("  muted look:   " + describeLook(info.looks && info.looks.muted))
   out.push("  audio: " + describeAudio(info.audio))

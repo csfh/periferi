@@ -93,13 +93,6 @@ function parseLook(text) {
   return look
 }
 
-// The follow setting in a look reply ("follow   yes" or "no"): whether the daemon applies the
-// matching look when the mic's mute state changes. null if the text has none.
-function parseFollow(text) {
-  var v = L.parseValues(text).follow
-  return v === "yes" ? true : v === "no" ? false : null
-}
-
 function brightnessPercent(value) { return L.valToPercent(value, maxBrightness) }
 
 function copyLook(look, changes) {

@@ -36,7 +36,6 @@ TestCase {
     compare(D.classify(["status", id]).kind, "read")
     compare(D.classify(["audio", id, "get"]).kind, "read")
     compare(D.classify(["look", id, "get", "muted"]).kind, "file-read")
-    compare(D.classify(["look", id, "follow", "get"]).kind, "file-read")
     verify(D.classify(["look", id, "get", "muted"]).note.indexOf("microphone is not touched") >= 0)
   }
 
@@ -48,7 +47,6 @@ TestCase {
     compare(D.classify(["look", id, "save", "muted", "effect=wave", "speed=fast"]).kind, "file")
     verify(D.classify(["look", id, "save", "muted", "effect=wave", "speed=fast"]).note.indexOf("effect=wave speed=fast") >= 0)
     verify(D.classify(["look", id, "save", "muted"]).note.indexOf("microphone is not touched") >= 0)
-    compare(D.classify(["look", id, "follow", "on"]).kind, "file")
     compare(D.classify(["audio", id, "set", "gain=40", "monitor_on=yes"]).kind, "card")
     verify(D.classify(["audio", id, "set", "gain=40"]).note.indexOf("gain=40") >= 0)
     compare(D.classify(["rgb", "get"]).kind, "other")
@@ -59,7 +57,7 @@ TestCase {
   // Only the two commands that write to the microphone are classed as mic writes.
   function test_only_two_verbs_write_to_the_mic() {
     var all = [["status", id], ["audio", id, "get"], ["audio", id, "set", "gain=1"],
-               ["look", id, "get", "unmuted"], ["look", id, "save", "unmuted"], ["look", id, "follow", "off"],
+               ["look", id, "get", "unmuted"], ["look", id, "save", "unmuted"],
                ["look", id, "apply", "muted"], ["set", id, "brightness=5"]]
     var mic = all.filter(function(a) { return D.classify(a).kind === "mic" })
     compare(mic, [["look", id, "apply", "muted"], ["set", id, "brightness=5"]])
@@ -79,13 +77,13 @@ TestCase {
 
   function test_header() {
     var h = D.header({ when: new Date(2026, 9, 14, 12, 0, 0), path: "/x/pane-debug.txt", module: id,
-                       periPath: "/x/peri", editing: "muted", online: true, follow: true,
+                       periPath: "/x/peri", editing: "muted", online: true,
                        looks: { unmuted: { effect: "wave", color: "", color2: "", speed: "fast", brightness: 40 },
                                 muted: { effect: "", color: "", color2: "", speed: "", brightness: -1 } },
                        audio: { gain: 65, monitor: 86, monitorOn: false, headphones: 77 } })
     verify(h.indexOf("log file: /x/pane-debug.txt") >= 0)
     verify(h.indexOf("editing: the muted look") >= 0)
-    verify(h.indexOf("follow mute: on") >= 0)
+    verify(h.indexOf("follow mute") < 0)
     verify(h.indexOf("unmuted look: effect=wave color=- color2=- speed=fast brightness=40") >= 0)
     verify(h.indexOf("muted look:   effect=- ") >= 0)
     verify(h.indexOf("audio: gain=65% monitor=86% monitor_on=no headphones=77%") >= 0)

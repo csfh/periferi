@@ -17,7 +17,7 @@ ShellRoot {
   function pct(v) { return Math.round(v * 100 / 255) }
   function log(tag) {
     console.log("SCN " + tag + " editing=" + mic.editing + " unmuted=" + pct(mic.savedLooks.unmuted.brightness)
-      + " muted=" + pct(mic.savedLooks.muted.brightness) + " follow=" + mic.follow + " gain=" + mic.audio.gain
+      + " muted=" + pct(mic.savedLooks.muted.brightness) + " gain=" + mic.audio.gain
       + " error=" + JSON.stringify(mic.error))
   }
   function step(ms, fn) {
@@ -75,20 +75,14 @@ ShellRoot {
     step(5900,  function() { gate(false, "write") })
     step(7600,  function() { log("6-after-the-refused-save") })
 
-    // Follow mute clicked twice while the first is still being saved: the second is not dropped.
-    step(7800,  function() { mark("follow") })
-    step(8000,  function() { mic.setFollow(false) })
-    step(8100,  function() { mic.setFollow(true); log("7-follow-clicked-twice") })
-    step(9300,  function() { log("8-follow-answered") })
-
     // Reads that began before a save and an audio change, and finish after them, must not overwrite them.
-    step(9500,  function() { mark("races") })
-    step(9700,  function() { gates(true) })
-    step(9900,  function() { mic.refresh("held reads") })
-    step(10200, function() { mic.chooseBrightness(50) })     // saves the Muted look (the one being edited)
-    step(10300, function() { mic.chooseAudio("gain", 40) })
-    step(11600, function() { log("9-changed-while-reads-in-flight"); gates(false) })
-    step(12400, function() { log("10-after-the-stale-reads-finished (must still show the changes)") })
-    step(12600, function() { console.log("SCN done"); Qt.quit() })
+    step(7800,  function() { mark("races") })
+    step(8000,  function() { gates(true) })
+    step(8200,  function() { mic.refresh("held reads") })
+    step(8500,  function() { mic.chooseBrightness(50) })     // saves the Muted look (the one being edited)
+    step(8600,  function() { mic.chooseAudio("gain", 40) })
+    step(9900,  function() { log("7-changed-while-reads-in-flight"); gates(false) })
+    step(10700, function() { log("8-after-the-stale-reads-finished (must still show the changes)") })
+    step(10900, function() { console.log("SCN done"); Qt.quit() })
   }
 }

@@ -13,8 +13,8 @@ import "peri/mic.js" as Mic
 //     scrolled wheel would repeat), and nothing here reaches the microphone except the Apply
 //     button, because a write to the microphone may be kept in its own memory.
 //   - The highlights are the settings saved in the look being edited. The microphone cannot report
-//     its effect or colour, so they are not what it is showing, and the pane does not follow its
-//     mute state: Apply sends the chosen look whatever that state is.
+//     its effect or colour, so they are not what it is showing, and nothing watches its mute
+//     state: Apply sends the chosen look whatever that state is.
 Column {
   id: root
 
@@ -221,18 +221,10 @@ Column {
       text: "Apply"
       onClicked: root.peri.apply()
     }
-    // On: the daemon applies the matching look whenever the mic's mute state changes.
-    Button {
-      width: Style.space(170)
-      bordered: true
-      selected: root.peri.follow
-      text: "Follow mute"
-      onClicked: root.peri.setFollow(!root.peri.follow)
-    }
     Caption {
       anchors.verticalCenter: parent.verticalCenter
       visible: root.peri.notice !== ""
-      width: parent.width - Style.space(340) - parent.spacing * 2
+      width: parent.width - Style.space(170) - parent.spacing
       text: root.peri.notice
     }
   }

@@ -46,7 +46,6 @@ Scope {
   // Apply waits for any save to reach the daemon, so it can never send an older look than the one shown.
   readonly property bool canApply: state.online && M.canApply(root.look) && !applier.running
                                    && !saver.running && state.pending.length === 0
-  readonly property bool follow: state.follow   // the daemon applies the matching look when the mic is (un)muted
   readonly property bool busy: applier.running
   readonly property string notice: state.notice  // what the last apply sent, or ""
   readonly property string error: state.error !== "" ? state.error : state.audioError
@@ -80,9 +79,8 @@ Scope {
     sink.running = true
     state.queue.push(D.header({ when: new Date(), path: root.debugPath, module: root.moduleId,
                                 periPath: root.periPath, editing: root.editing, online: state.online,
-                                follow: state.follow, looks: state.looks, audio: state.audio }) + "\n")
-    dbg("OPEN", "debug log switched on; reading the daemon's recent journal lines about the mic, then refreshing")
-    journal.running = true
+                                looks: state.looks, audio: state.audio }) + "\n")
+    dbg("OPEN", "debug log switched on; refreshing")
     flush()
     root.refresh("the debug log was switched on")
   }
@@ -210,30 +208,6 @@ Scope {
     audioSetter.running = true
   }
 
-  // Turn following the mute state on or off (the daemon keeps it with the looks; a file, not the mic). Shown at
-  // once. If the previous change is still being saved this one waits its turn (the last one wins): it is never
-  // dropped.
-  function setFollow(on) {
-    dbg("GESTURE", "Follow mute button pressed: turning it " + (on ? "on" : "off"))
-    if (root.moduleId === "") {
-      dbg("IGNORED", "no module is selected")
-      return
-    }
-    dbg("FOLLOW", "following the mute state " + (on ? "on: the daemon applies the matching look after each mute change" : "off: only Apply sends a look"))
-    state.follow = on // shown at once; the daemon's answer confirms it
-    if (follower.running) {
-      state.pendingFollow = on
-      dbg("FOLLOW", "the previous change is still being saved: this one goes next")
-      return
-    }
-    sendFollow(on)
-  }
-
-  function sendFollow(on) {
-    follower.command = Cli.command(root.periPath, ["look", root.moduleId, "follow", on ? "on" : "off"])
-    follower.running = true
-  }
-
   // Send the look being edited to the mic. The only call here that does.
   function apply() {
     dbg("GESTURE", "Apply pressed on the " + root.editing + " look, which held: " + D.describeLook(root.look))
@@ -290,8 +264,6 @@ Scope {
     property bool saveFailed: false // a save was refused: read the truth once the queue is empty
     property int audioGen: 0        // the same for audio changes
     property int audioReadGen: 0
-    property var pendingFollow: null // a Follow mute change waiting for the one in flight: last one wins
-    property bool follow: true
     property bool debug: false
     property var queue: []              // debug lines waiting for the log writer
     property var started: ({})          // process name -> when it started, for the debug log
@@ -335,11 +307,9 @@ Scope {
     stdout: StdioCollector {
       onStreamFinished: {
         var look = M.parseLook(this.text)
-        var follow = M.parseFollow(this.text)
         root.traceText("OUT", "look get unmuted", this.text)
-        if (follow !== null && !follower.running && state.pendingFollow === null) state.follow = follow
         if (look !== null && !saver.running && state.pending.length === 0 && state.readGen === state.saveGen) {
-          root.dbg("STATE", "unmuted look read from the daemon: " + D.describeLook(look) + ", follow mute " + (follow ? "on" : "off"))
+          root.dbg("STATE", "unmuted look read from the daemon: " + D.describeLook(look))
           root.setLook("unmuted", look)
         } else {
           root.dbg("IGNORED", "the unmuted look read from the daemon was not used: " + (look === null ? "it was not a look" : "a save is in flight, and what was saved last wins"))
@@ -366,33 +336,6 @@ Scope {
     }
     onRunningChanged: root.traceRun("getMuted", getMuted)
     onExited: function(exitCode) { root.traceExit("getMuted", exitCode) }
-  }
-
-  // `peri look ... follow` answers with the setting as the daemon holds it; a failure puts the shown value back.
-  Process {
-    id: follower
-    stdout: StdioCollector {
-      onStreamFinished: {
-        var follow = M.parseFollow(this.text)
-        root.traceText("OUT", "follow", this.text)
-        if (follow !== null && state.pendingFollow === null) state.follow = follow
-      }
-    }
-    stderr: StdioCollector {
-      onStreamFinished: { root.traceText("ERR", "follow", this.text); state.errText = this.text.trim() }
-    }
-    onRunningChanged: root.traceRun("follower", follower)
-    onExited: function(exitCode) {
-      root.traceExit("follower", exitCode)
-      if (exitCode !== 0) state.error = state.errText || "the setting could not be saved"
-      if (state.pendingFollow !== null) { // the user changed it again meanwhile: that is what they want
-        var next = state.pendingFollow
-        state.pendingFollow = null
-        root.sendFollow(next)
-      } else if (exitCode !== 0) {
-        root.refresh()
-      }
-    }
   }
 
   // `peri look ... save` answers with the look as the daemon saved it, in the format of `get`.
@@ -512,20 +455,6 @@ Scope {
     stdinEnabled: true
     command: ["sh", "-c", "mkdir -p \"$(dirname \"$1\")\" && exec cat >> \"$1\"", "sh", root.debugPath]
     onRunningChanged: if (running) root.flush()
-  }
-
-  // When the log starts, copy what the daemon's journal says about the mic (follow mute, applies).
-  Process {
-    id: journal
-    command: ["sh", "-c", "journalctl --user -u perid --since '-30 min' --no-pager -o cat 2>/dev/null | grep -iE 'follow|razer|seiren' | tail -25"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        var lines = this.text.split("\n").filter(function(l) { return l.trim() !== "" })
-        root.dbg("DAEMON", lines.length === 0 ? "nothing about the mic in the daemon's journal for the last 30 minutes"
-                                              : lines.length + " journal line(s) from the last 30 minutes follow")
-        lines.forEach(function(l) { root.dbg("DAEMON", l) })
-      }
-    }
   }
 
   Timer {
