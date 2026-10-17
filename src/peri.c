@@ -676,8 +676,8 @@ static int razer_send_and_print(const char *name, uint8_t cls, uint8_t cmd, uint
 
 // The one write `peri razer` can make: switch one of the four display modules (a public note for
 // the V3 Pro names them headphone, mic-gain, voice-activated and mute-effect; the order is unproven) on
-// or off. Class 0f, command 0x12, three bytes: 01, the module, 0 or 1 (the reads showed 01 <module> <1>
-// for modules 0 to 3). This may be kept in the microphone's own memory. The module and the value are
+// or off, or with another value up to 7 (it may be a choice, not only on and off). Class 0f, command 0x12,
+// three bytes: 01, the module, the value (the reads showed 01 <module> <1> for modules 0 to 3). This may be kept in the microphone's own memory. The module and the value are
 // checked before the device is opened, and the caller reads the value first so it can put it back.
 static int cmd_razer_display_set(const char *arg, const char *module, const char *value)
 {
@@ -685,8 +685,8 @@ static int cmd_razer_display_set(const char *arg, const char *module, const char
     if (!name)
         return 2;
     if (!module || !value || module[0] < '0' || module[0] > '3' || module[1] != '\0'
-        || (value[0] != '0' && value[0] != '1') || value[1] != '\0') {
-        fprintf(stderr, "peri: display-set takes a module 0-3 and a value 0 or 1\n");
+        || value[0] < '0' || value[0] > '7' || value[1] != '\0') {
+        fprintf(stderr, "peri: display-set takes a module 0-3 and a value 0-7\n");
         return 2;
     }
     if (!node_allowed(name, false))
@@ -735,6 +735,70 @@ static int cmd_razer_getter(const char *arg, const char *id_text, const char *mo
 // to 0x0f, each asked once for six zero argument bytes. A command that is not supported answers status
 // 5, so only the other answers are printed. The high bit is the getter convention, so no setter id
 // (such as the device-mode set, 00 04) can be reached. A class that gives no clean reply five times in a row is skipped.
+// A guessed write: the standard static-colour effect frame (class 0f, command 0x02) with another value
+// in its first argument byte. A public note calls that byte a "profile"; every frame sent so far used
+// 0 ("now") or, for brightness, 1 ("kept"). The mute look may live in another slot. Profiles 2 to 7 only,
+// one static colour, zone 0, checked before the device is opened. The device's own status says whether it
+// knows the slot, and a slot that is kept may overwrite what the microphone stored there, which the
+// owner's saved looks can put back with Apply.
+static int cmd_razer_profile_static(const char *arg, const char *profile, const char *rgb)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+    bool ok = profile && profile[0] >= '2' && profile[0] <= '7' && profile[1] == '\0' && rgb && strlen(rgb) == 6;
+    for (int i = 0; ok && i < 6; i++)
+        ok = isxdigit((unsigned char)rgb[i]);
+    if (!ok) {
+        fprintf(stderr, "peri: profile-static takes a profile 2-7 and six hex digits\n");
+        return 2;
+    }
+    uint8_t color[3];
+    for (int i = 0; i < 3; i++) {
+        char pair[3] = { rgb[2 * i], rgb[2 * i + 1], '\0' };
+        color[i] = (uint8_t)strtoul(pair, nullptr, 16);
+    }
+    uint8_t args[RAZER_EFFECT_ARGS_MAX];
+    size_t size = razer_effect_args((uint8_t)(profile[0] - '0'), RAZER_EFFECT_STATIC, color, args);
+    if (size == 0)
+        return 2;
+    if (!node_allowed(name, false))
+        return 1;
+    return razer_send_and_print(name, 0x0f, 0x02, (uint8_t)size, args);
+}
+
+// Read-only: one of the class 08 getters the census found (82 86 88 94 95 96 97 98), asked for six
+// argument bytes of which the first two may be a digit 0 to 7 each (the rest zero). Class 08 is not in
+// the public note; this only reads. Anything else is refused before the device is opened.
+static int cmd_razer_class8(const char *arg, const char *id_text, const char *b0, const char *b1)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+    static const unsigned known[] = { 0x82, 0x86, 0x88, 0x94, 0x95, 0x96, 0x97, 0x98 };
+    char *end = nullptr;
+    unsigned long id = id_text ? strtoul(id_text, &end, 16) : 0;
+    bool ok = id_text && *id_text && *end == '\0' && strlen(id_text) == 2;
+    bool listed = false;
+    for (size_t i = 0; i < sizeof known / sizeof *known; i++)
+        listed = listed || known[i] == id;
+    const char *picks[2] = { b0, b1 };
+    for (int i = 0; i < 2; i++)
+        if (picks[i] && (picks[i][0] < '0' || picks[i][0] > '7' || picks[i][1] != '\0'))
+            ok = false;
+    if (!ok || !listed) {
+        fprintf(stderr, "peri: class8 takes one of 82 86 88 94 95 96 97 98 and up to two digits 0-7\n");
+        return 2;
+    }
+    uint8_t args[6] = { 0 };
+    for (int i = 0; i < 2; i++)
+        if (picks[i])
+            args[i] = (uint8_t)(picks[i][0] - '0');
+    if (!node_allowed(name, false))
+        return 1;
+    return razer_send_and_print(name, 0x08, (uint8_t)id, 6, args);
+}
+
 static int cmd_razer_scan_getters(const char *arg)
 {
     const char *name = node_name(arg);
@@ -1367,6 +1431,12 @@ int main(int argc, char **argv)
     if ((argc == 5 || argc == 6) && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "getter") == 0)
         return cmd_razer_getter(argv[2], argv[4], argc == 6 ? argv[5] : nullptr);
 
+    if (argc >= 5 && argc <= 7 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "class8") == 0)
+        return cmd_razer_class8(argv[2], argv[4], argc >= 6 ? argv[5] : nullptr, argc == 7 ? argv[6] : nullptr);
+
+    if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "profile-static") == 0)
+        return cmd_razer_profile_static(argv[2], argv[4], argv[5]);
+
     if (argc == 4 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "scan-getters") == 0)
         return cmd_razer_scan_getters(argv[2]);
 
@@ -1412,6 +1482,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|getter <90-9f> [module 0-7, 94 only]|color-set <ff0000|000000|10 hex digits>|zone-static <1-7> <rrggbb>|scan-getters|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0-7>|getter <90-9f> [module 0-7, 94 only]|color-set <ff0000|000000|10 hex digits>|zone-static <1-7> <rrggbb>|scan-getters|class8 <id> [0-7 [0-7]]|profile-static <2-7> <rrggbb>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
