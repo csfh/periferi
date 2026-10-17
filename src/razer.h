@@ -95,7 +95,11 @@ size_t razer_effect_args(uint8_t storage, uint8_t effect, const uint8_t rgb[3],
 
 // What the mic's controls report on the control interface, as input report 5 (16 bytes with the
 // id), seen in passive captures on 2026-10-14. Neither is documented by Razer.
-//   05 11 xx   tap-to-mute state, flips on every tap: 00 = muted, 01 = unmuted
+//   05 11 xx   tap-to-mute state, flips on every tap: 00 = unmuted, 01 = muted. The first
+//              capture (2026-10-14) read these the other way round from one reading; on
+//              2026-10-16 the mic recorded room sound for nine minutes, with the sound card's
+//              capture switch on, while its last report had been 00, and the looks landed on
+//              the wrong states. The decoded value below is the STATE, not the wire byte.
 //   05 0f nn   dial level, absolute, steps of 2, 0x14..0x64 (20..100) in the captures
 enum razer_event_kind {
     RAZER_EVENT_NONE,  // not a report we know

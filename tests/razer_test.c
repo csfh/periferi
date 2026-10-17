@@ -165,9 +165,10 @@ int main(void)
               && frame[11] == 3 && frame[63] == 0x5a,
           "spectrum frame");
 
-    // Control reports, bytes as captured from the real mic.
+    // Control reports, bytes as captured from the real mic. The mute byte is 01 while muted
+    // (razer.h says how that was settled); the event value is the state, so it comes out flipped.
     struct razer_event ev;
-    const uint8_t muted[16] = { 0x05, 0x11, 0x00 }, unmuted[16] = { 0x05, 0x11, 0x01 };
+    const uint8_t muted[16] = { 0x05, 0x11, 0x01 }, unmuted[16] = { 0x05, 0x11, 0x00 };
     const uint8_t dial_top[16] = { 0x05, 0x0f, 0x64 }, dial_low[16] = { 0x05, 0x0f, 0x14 };
     check(razer_event_decode(muted, 16, &ev) && ev.kind == RAZER_EVENT_MUTE && ev.value == 0,
           "event muted");

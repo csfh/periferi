@@ -103,7 +103,9 @@ bool razer_event_decode(const uint8_t *report, size_t len, struct razer_event *e
     if (len < 3 || report[0] != 0x05)
         return false;
     if (report[1] == 0x11 && report[2] <= 1) {
-        *ev = (struct razer_event){ RAZER_EVENT_MUTE, report[2] };
+        // The wire byte is 01 while muted; the event carries the state (0 muted, 1 unmuted),
+        // see the report list in razer.h for how that was established.
+        *ev = (struct razer_event){ RAZER_EVENT_MUTE, report[2] == 0 ? 1 : 0 };
         return true;
     }
     if (report[1] == 0x0f) {
