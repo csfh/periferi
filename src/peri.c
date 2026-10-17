@@ -1,5 +1,6 @@
 // peri: command line client for the peri core daemon.
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -725,21 +726,33 @@ static int cmd_razer_getter(const char *arg, const char *id_text, const char *mo
     return razer_send_and_print(name, 0x0f, (uint8_t)id, 6, args);
 }
 
-// A guessed write: `0f 14` is the setter of the getter `0f 94`, which answered `01 00 00 00 00 00`. This
-// assumes the layout mirrors the read: 01, red, green, blue, 0, 0. It may be kept in the microphone's
-// own memory. Only the two values the owner approved (red to try, black to put back the value that
-// was read) are accepted, checked before the device is opened.
-static int cmd_razer_color_set(const char *arg, const char *rgb)
+// A guessed write: `0f 14` is the setter of the getter `0f 94`, which answered `01 00 00 00 00 00`.
+// Nothing is known about the five bytes after the leading 01. They are given as ten hex digits, or as
+// the shorthands ff0000 (01 ff 00 00 00 00) and 000000 (the value that was read). It may be kept in the
+// microphone's own memory, so the caller reads `0f 94` first to have a value to put back. Only this
+// command can be reached, and the digits are checked before the device is opened.
+static int cmd_razer_color_set(const char *arg, const char *value)
 {
     const char *name = node_name(arg);
     if (!name)
         return 2;
     uint8_t args[6] = { 0x01, 0, 0, 0, 0, 0 };
-    if (rgb && strcmp(rgb, "ff0000") == 0)
+    if (value && strcmp(value, "ff0000") == 0)
         args[1] = 0xff;
-    else if (!rgb || strcmp(rgb, "000000") != 0) {
-        fprintf(stderr, "peri: color-set takes ff0000 or 000000 for now\n");
-        return 2;
+    else if (value && strcmp(value, "000000") == 0)
+        ;
+    else {
+        bool ok = value && strlen(value) == 10;
+        for (int i = 0; ok && i < 10; i++)
+            ok = isxdigit((unsigned char)value[i]);
+        if (!ok) {
+            fprintf(stderr, "peri: color-set takes ten hex digits (the five bytes after the leading 01), ff0000 or 000000\n");
+            return 2;
+        }
+        for (int i = 0; i < 5; i++) {
+            char pair[3] = { value[2 * i], value[2 * i + 1], '\0' };
+            args[1 + i] = (uint8_t)strtoul(pair, nullptr, 16);
+        }
     }
     if (!node_allowed(name, false))
         return 1;
@@ -1313,6 +1326,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|getter <90-9f> [module 0-7, 94 only]|color-set <ff0000|000000>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|getter <90-9f> [module 0-7, 94 only]|color-set <ff0000|000000|10 hex digits>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
