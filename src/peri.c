@@ -596,7 +596,7 @@ static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[5];
     // The getters of two commands whose setters a public protocol note names for the Seiren V3 Pro
     // (class 0f, ids 12 "display switch" and 13 "tap"; a getter is the setter's id with 0x80 set).
     // Sizes are the note's. The arguments are zero placeholders: which bytes select what is unknown.
-    // An optional first byte, 0 up to select_max, lets a read ask about another module or gesture.
+    // Optional first and second bytes, 0 up to select_max, let a read ask about another module or gesture.
     { "display-switch", 0x0f, 0x92, 3, { 0, 0, 0, 0, 0 }, 7 },
     { "tap", 0x0f, 0x93, 4, { 0, 0, 0, 0, 0 }, 7 },
 };
@@ -604,7 +604,7 @@ static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[5];
 // Send one allowlisted query to a Razer control interface and print the raw reply frame,
 // then what it decodes to. Anything that is not a clean reply is reported, never retried
 // by other means.
-static int cmd_razer(const char *arg, const char *query, const char *select)
+static int cmd_razer(const char *arg, const char *query, const char *select, const char *select2)
 {
     const char *name = node_name(arg);
     if (!name)
@@ -619,15 +619,19 @@ static int cmd_razer(const char *arg, const char *query, const char *select)
     }
     uint8_t args[5];
     memcpy(args, razer_queries[q].args, sizeof args);
-    if (select) {
-        // One digit from 0 up to the query's own limit; a query with no limit takes no selector.
-        if (!razer_queries[q].select_max || select[0] < '0' || select[0] - '0' > razer_queries[q].select_max
-            || select[1] != '\0') {
-            fprintf(stderr, "peri: '%s' takes no selector, or one digit from 0 to %u\n", query,
+    // Up to two selector bytes, each one digit from 0 up to the query's own limit; a query with no
+    // limit takes none. They are checked here, before the device is opened.
+    const char *picks[2] = { select, select2 };
+    for (int i = 0; i < 2; i++) {
+        if (!picks[i])
+            continue;
+        if (!razer_queries[q].select_max || picks[i][0] < '0' || picks[i][0] - '0' > razer_queries[q].select_max
+            || picks[i][1] != '\0') {
+            fprintf(stderr, "peri: '%s' takes no selector, or up to two digits from 0 to %u\n", query,
                     razer_queries[q].select_max);
             return 2;
         }
-        args[0] = (uint8_t)(select[0] - '0');
+        args[i] = (uint8_t)(picks[i][0] - '0');
     }
     if (!node_allowed(name, false))
         return 1;
@@ -1186,8 +1190,8 @@ int main(int argc, char **argv)
     if ((argc == 4 || argc == 5) && strcmp(argv[1], "feature") == 0)
         return cmd_feature(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
 
-    if ((argc == 4 || argc == 5) && strcmp(argv[1], "razer") == 0)
-        return cmd_razer(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
+    if (argc >= 4 && argc <= 6 && strcmp(argv[1], "razer") == 0)
+        return cmd_razer(argv[2], argv[3], argc >= 5 ? argv[4] : nullptr, argc == 6 ? argv[5] : nullptr);
 
     if (argc == 4 && strcmp(argv[1], "razer90") == 0)
         return cmd_razer90(argv[2], argv[3]);
@@ -1219,6 +1223,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7]|tap [0-7]|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
