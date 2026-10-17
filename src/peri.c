@@ -694,6 +694,28 @@ static int cmd_razer_display_set(const char *arg, const char *module, const char
     return razer_send_and_print(name, 0x0f, 0x12, 3, args);
 }
 
+// Read-only search for the command that sets the mute effect's colour: ask one class 0f getter, id
+// 0x90 to 0x9f (the high bit is the getter convention), for six zero argument bytes and print what the
+// device says, including "not supported". The two ids already known have their own queries. Bounds are
+// checked before the device is opened. Only ever a getter: no id below 0x90 can be reached.
+static int cmd_razer_getter(const char *arg, const char *id_text)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+    char *end = nullptr;
+    unsigned long id = id_text ? strtoul(id_text, &end, 16) : 0;
+    if (!id_text || !*id_text || *end != '\0' || strlen(id_text) > 2 || id < 0x90 || id > 0x9f || id == 0x92
+        || id == 0x93) {
+        fprintf(stderr, "peri: getter takes one class 0f id from 90 to 9f in hex, other than 92 and 93\n");
+        return 2;
+    }
+    if (!node_allowed(name, false))
+        return 1;
+    const uint8_t args[6] = { 0 };
+    return razer_send_and_print(name, 0x0f, (uint8_t)id, 6, args);
+}
+
 // The queries `peri razer90` may send to the DeathAdder: reads only (firmware, battery, charging,
 // DPI, poll rate). Nothing that sets a mode, a DPI, a poll rate or lighting is on it. `args` is
 // at least `size` long. Prints the raw bytes first, so a reply that does not decode can be told
@@ -1219,6 +1241,9 @@ int main(int argc, char **argv)
     if ((argc == 4 || argc == 5) && strcmp(argv[1], "feature") == 0)
         return cmd_feature(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
 
+    if (argc == 5 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "getter") == 0)
+        return cmd_razer_getter(argv[2], argv[4]);
+
     if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "display-set") == 0)
         return cmd_razer_display_set(argv[2], argv[4], argv[5]);
 
@@ -1255,6 +1280,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|getter <90-9f>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
