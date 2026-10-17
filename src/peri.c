@@ -593,6 +593,11 @@ static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[5];
     { "brightness", 0x0f, 0x84, 3, { 0x01, 0x00, 0x00, 0, 0 } },
     { "led-effect", 0x03, 0x82, 3, { 0x01, 0x00, 0x00, 0, 0 } },
     { "led-rgb", 0x03, 0x81, 5, { 0x01, 0x00, 0x00, 0x00, 0x00 } },
+    // The getters of two commands whose setters a public protocol note names for the Seiren V3 Pro
+    // (class 0f, ids 12 "display switch" and 13 "tap"; a getter is the setter's id with 0x80 set).
+    // Sizes are the note's. The arguments are zero placeholders: which bytes select what is unknown.
+    { "display-switch", 0x0f, 0x92, 3, { 0, 0, 0, 0, 0 } },
+    { "tap", 0x0f, 0x93, 4, { 0, 0, 0, 0, 0 } },
 };
 
 // Send one allowlisted query to a Razer control interface and print the raw reply frame,
@@ -608,7 +613,7 @@ static int cmd_razer(const char *arg, const char *query)
     while (q < sizeof razer_queries / sizeof *razer_queries && strcmp(razer_queries[q].name, query))
         q++;
     if (q == sizeof razer_queries / sizeof *razer_queries) {
-        fprintf(stderr, "peri: unknown razer query '%s' (known: firmware, brightness, led-effect, led-rgb)\n", query);
+        fprintf(stderr, "peri: unknown razer query '%s' (known: firmware, brightness, led-effect, led-rgb, display-switch, tap)\n", query);
         return 2;
     }
     if (!node_allowed(name, false))
@@ -1201,6 +1206,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch|tap|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
