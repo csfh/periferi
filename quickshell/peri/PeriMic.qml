@@ -44,7 +44,7 @@ Scope {
   readonly property var look: state.looks[root.editing]   // { effect, color, brightness } being edited
   readonly property int deviceBrightness: state.deviceBrightness // the mic's own, 0-255
   // Apply waits for any save to reach the daemon, so it can never send an older look than the one shown.
-  readonly property bool canApply: state.online && M.canApply(root.look) && !applier.running
+  readonly property bool canApply: state.online && M.canApplyFor(root.editing, root.look) && !applier.running
                                    && !saver.running && state.pending.length === 0
   readonly property bool busy: applier.running
   readonly property string notice: state.notice  // what the last apply sent, or ""
@@ -139,6 +139,7 @@ Scope {
   // An effect button: saves the look being edited with that effect, keeping the colours the effect
   // can use. File only.
   function chooseEffect(id) {
+    if (M.isMuted(root.editing)) { dbg("IGNORED", "the muted look is a colour only: no effect to choose"); return }
     dbg("GESTURE", "effect button \"" + id + "\" on the " + root.editing + " look, which held: " + D.describeLook(root.look))
     var next = M.withEffect(root.look, id)
     if (next !== null) saveLook(root.editing, next)
@@ -149,6 +150,12 @@ Scope {
   // the second colour of breathing. File only.
   function chooseColor(slot, hex) {
     dbg("GESTURE", "colour swatch " + hex + " in slot " + slot + " on the " + root.editing + " look, which held: " + D.describeLook(root.look))
+    if (M.isMuted(root.editing)) {   // the muted look is a static colour, whatever the old look held
+      var muted = slot === 1 ? M.mutedColor(hex) : null
+      if (muted !== null) saveLook(root.editing, muted)
+      else dbg("IGNORED", "the muted look has one colour")
+      return
+    }
     var next = M.withColor(root.look, slot, hex)
     if (next !== null) saveLook(root.editing, next)
     else dbg("IGNORED", "that colour does not apply here (not a valid colour, or the effect takes no second colour)")
@@ -156,6 +163,7 @@ Scope {
 
   // Slow or Fast for a wave. File only.
   function chooseSpeed(speed) {
+    if (M.isMuted(root.editing)) { dbg("IGNORED", "the muted look has no speed"); return }
     dbg("GESTURE", "speed button \"" + speed + "\" on the " + root.editing + " look, which held: " + D.describeLook(root.look))
     var next = M.withSpeed(root.look, speed)
     if (next !== null) saveLook(root.editing, next)
@@ -164,6 +172,7 @@ Scope {
 
   // "Random colours" for breathing. File only.
   function chooseRandomColors() {
+    if (M.isMuted(root.editing)) { dbg("IGNORED", "the muted look has no random colours"); return }
     dbg("GESTURE", "Random colours on the " + root.editing + " look, which held: " + D.describeLook(root.look))
     var next = M.withRandomColors(root.look)
     if (next !== null) saveLook(root.editing, next)
@@ -172,6 +181,7 @@ Scope {
 
   // Call from a slider's `released`: saves the look being edited with that brightness. File only.
   function chooseBrightness(percent) {
+    if (M.isMuted(root.editing)) { dbg("IGNORED", "the muted look has no brightness of its own"); return }
     dbg("GESTURE", "brightness slider released at " + percent + "% on the " + root.editing + " look, which held: " + D.describeLook(root.look))
     var next = M.withBrightness(root.look, percent)
     if (next !== null) saveLook(root.editing, next)
@@ -213,7 +223,7 @@ Scope {
     dbg("GESTURE", "Apply pressed on the " + root.editing + " look, which held: " + D.describeLook(root.look))
     if (!root.canApply || root.moduleId === "") {
       dbg("IGNORED", "Apply did nothing because " + (!state.online ? "the microphone is offline"
-          : !M.canApply(root.look) ? "this look has nothing saved to send"
+          : !M.canApplyFor(root.editing, root.look) ? "this look has nothing saved to send"
           : applier.running ? "an Apply is already running"
           : "a save has not reached the daemon yet (it would send an older look)"))
       return

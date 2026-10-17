@@ -11,6 +11,11 @@
 // the mic until the user presses Apply. That keeps every write to the mic a deliberate click, which
 // matters because a write may be kept in the mic's own memory.
 
+// The MUTED look is different from the Unmuted one: it is the colour the microphone's own firmware
+// shows while it is muted, and it is only ever a static colour. It has no effect choice and no
+// brightness (the ring has one brightness), so the pane offers swatches and nothing else for it.
+// Applying it writes just that colour (`peri look ... apply muted`); the unmuted ring is not touched.
+
 // The module declares the protocol's one-byte range as its brightness limit.
 var maxBrightness = 255
 
@@ -95,6 +100,20 @@ function parseLook(text) {
 
 function brightnessPercent(value) { return L.valToPercent(value, maxBrightness) }
 
+function isMuted(which) { return which === "muted" }
+
+// The muted look for a swatch: a static colour and nothing else. null for a bad colour.
+function mutedColor(hex) {
+  if (!validHex(hex)) return null
+  return { effect: "static", color: hex.toLowerCase(), color2: "", speed: "", brightness: -1 }
+}
+
+// Can this look be applied? The muted look needs its static colour; any other look needs something to send.
+function canApplyFor(which, look) {
+  if (isMuted(which)) return !!look && look.effect === "static" && validHex(look.color)
+  return canApply(look)
+}
+
 function copyLook(look, changes) {
   var out = { effect: look.effect, color: look.color, color2: look.color2,
               speed: look.speed || "", brightness: look.brightness }
@@ -154,6 +173,10 @@ function withBrightness(look, percent) {
 // left out, which the daemon reads as "not set": the look is replaced, never merged.
 function saveArgs(which, look) {
   var args = ["save", which]
+  if (isMuted(which)) {   // a colour, nothing else: the daemon refuses any other effect and a brightness
+    if (look.effect === "static" && validHex(look.color)) args.push("effect=static", "color=" + look.color)
+    return args
+  }
   var n = maxColors(look.effect)
   if (look.effect !== "") args.push("effect=" + look.effect)
   if (n >= 1 && look.color !== "") args.push("color=" + look.color)
@@ -172,6 +195,11 @@ function canApply(look) { return !!look && (look.effect !== "" || look.brightnes
 // off), where they would only suggest a choice that does nothing. With no effect chosen yet
 // they stay, because picking a colour is a way to start: it selects the Colour effect.
 function showColors(look) { return !look || look.effect === "" || maxColors(look.effect) >= 1 }
+
+// Which controls the pane shows for the look being edited. The muted look is swatches only.
+function showColorsFor(which, look) { return isMuted(which) || showColors(look) }
+function showEffectControls(which) { return !isMuted(which) }
+function showBrightness(which) { return !isMuted(which) }
 
 // Do the Slow and Fast buttons belong here? Only for an effect that has a speed.
 function showSpeed(look) { return !!look && hasSpeed(look.effect) }
@@ -200,6 +228,12 @@ function swatchSelected(hex, look, slot) {
 function lookLabel(which) {
   var l = looks.filter(function(x) { return x.id === which })[0]
   return l ? l.label : ""
+}
+
+// The saved muted look in words.
+function mutedText(look) {
+  if (!canApplyFor("muted", look)) return "Nothing saved in this look yet"
+  return "Saved: colour " + look.color
 }
 
 // The saved look in words, for the line under the buttons.

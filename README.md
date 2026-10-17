@@ -37,10 +37,12 @@ peri rgb set hue=170 sat=255
 peri status razer-seiren-v3-chroma     # firmware, brightness
 peri look razer-seiren-v3-chroma save unmuted effect=breathing color=00ff40 brightness=200
 peri look razer-seiren-v3-chroma apply unmuted
+peri look razer-seiren-v3-chroma save muted effect=static color=ff0000   # what the ring shows while muted
+peri look razer-seiren-v3-chroma apply muted
 peri audio razer-seiren-v3-chroma get  # gain, monitor mix, headphones
 ```
 
-`peri` with no arguments prints every command. The microphone cannot report its own effect or colour, so periferi keeps two **looks** for it (Unmuted and Muted) in `~/.config/peri/state/`. Apply sends one to the mic when you ask; the mic's own firmware decides what it shows while muted.
+`peri` with no arguments prints every command. The microphone cannot report its own effect or colour, so periferi keeps two **looks** for it in `~/.config/peri/state/`. The Unmuted look is what the ring shows normally: an effect, colours and a brightness, sent by Apply. The Muted look is only a colour: Apply writes it into the microphone, and the microphone's own firmware then shows it whenever it is muted, with no software watching.
 
 For the panel, `just plugin` installs it as an Omarchy shell widget; `omarchy restart shell` loads it. The Quickshell core in `quickshell/peri/` imports nothing from the host shell, so other hosts can use it.
 

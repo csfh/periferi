@@ -193,15 +193,15 @@ TestCase {
   function test_save_args() {
     compare(Mic.saveArgs("unmuted", look("static", "0000ff", 102)),
             ["save", "unmuted", "effect=static", "color=0000ff", "brightness=102"])
-    compare(Mic.saveArgs("muted", look("breathing", "", -1)), ["save", "muted", "effect=breathing"])
-    compare(Mic.saveArgs("muted", look("breathing", "00ff00", -1, "ff0000")),
-            ["save", "muted", "effect=breathing", "color=00ff00", "color2=ff0000"])
-    compare(Mic.saveArgs("muted", look("wave-reverse", "", 10)), ["save", "muted", "effect=wave-reverse", "brightness=10"])
-    compare(Mic.saveArgs("muted", look("none", "", 0)), ["save", "muted", "effect=none", "brightness=0"])
-    compare(Mic.saveArgs("muted", look("", "", 40)), ["save", "muted", "brightness=40"])
+    compare(Mic.saveArgs("unmuted", look("breathing", "", -1)), ["save", "unmuted", "effect=breathing"])
+    compare(Mic.saveArgs("unmuted", look("breathing", "00ff00", -1, "ff0000")),
+            ["save", "unmuted", "effect=breathing", "color=00ff00", "color2=ff0000"])
+    compare(Mic.saveArgs("unmuted", look("wave-reverse", "", 10)), ["save", "unmuted", "effect=wave-reverse", "brightness=10"])
+    compare(Mic.saveArgs("unmuted", look("none", "", 0)), ["save", "unmuted", "effect=none", "brightness=0"])
+    compare(Mic.saveArgs("unmuted", look("", "", 40)), ["save", "unmuted", "brightness=40"])
     compare(Mic.saveArgs("unmuted", look("", "", -1)), ["save", "unmuted"])      // clears the look
-    compare(Mic.saveArgs("muted", look("wave", "0000ff", -1)), ["save", "muted", "effect=wave"]) // stray colour left out
-    compare(Mic.saveArgs("muted", look("breathing", "", -1, "ff0000")), ["save", "muted", "effect=breathing"]) // second needs a first
+    compare(Mic.saveArgs("unmuted", look("wave", "0000ff", -1)), ["save", "unmuted", "effect=wave"]) // stray colour left out
+    compare(Mic.saveArgs("unmuted", look("breathing", "", -1, "ff0000")), ["save", "unmuted", "effect=breathing"]) // second needs a first
     compare(Mic.applyArgs("muted"), ["apply", "muted"])
   }
 
@@ -313,5 +313,40 @@ TestCase {
     compare(cur.gain, 65)                                   // the input is never changed
     compare(Mic.withAudio(null, "gain", 5).gain, 5)
     compare(Mic.withAudio(null, "gain", 5).monitorOn, null)
+  }
+  // --- the Muted look: the colour the firmware shows while muted, a static colour only --------
+  function test_muted_look() {
+    compare(Mic.isMuted("muted"), true)
+    compare(Mic.isMuted("unmuted"), false)
+    compare(Mic.mutedColor("FF8000"), look("static", "ff8000", -1))
+    compare(Mic.mutedColor("zz"), null)
+    compare(Mic.mutedColor(undefined), null)
+
+    // Applying needs the static colour; the Unmuted look keeps its own rule.
+    compare(Mic.canApplyFor("muted", look("static", "ff0000", -1)), true)
+    compare(Mic.canApplyFor("muted", look("static", "ff0000", 38)), true)   // an old brightness is not sent
+    compare(Mic.canApplyFor("muted", look("wave", "", -1)), false)
+    compare(Mic.canApplyFor("muted", look("", "", 40)), false)
+    compare(Mic.canApplyFor("muted", look("", "", -1)), false)
+    compare(Mic.canApplyFor("muted", null), false)
+    compare(Mic.canApplyFor("unmuted", look("wave", "", -1)), true)
+    compare(Mic.canApplyFor("unmuted", look("", "", 40)), true)
+    compare(Mic.canApplyFor("unmuted", look("", "", -1)), false)
+
+    // Saving it sends a colour and nothing else, so the daemon never has to refuse the pane.
+    compare(Mic.saveArgs("muted", look("static", "ff0000", 38)), ["save", "muted", "effect=static", "color=ff0000"])
+    compare(Mic.saveArgs("muted", look("wave", "", 20)), ["save", "muted"])
+    compare(Mic.saveArgs("unmuted", look("static", "ff0000", 38)), ["save", "unmuted", "effect=static", "color=ff0000", "brightness=38"])
+
+    // The Muted tab is swatches only.
+    compare(Mic.showColorsFor("muted", look("wave", "", -1)), true)
+    compare(Mic.showColorsFor("unmuted", look("wave", "", -1)), false)
+    compare(Mic.showEffectControls("muted"), false)
+    compare(Mic.showEffectControls("unmuted"), true)
+    compare(Mic.showBrightness("muted"), false)
+    compare(Mic.showBrightness("unmuted"), true)
+    compare(Mic.mutedText(look("static", "ff8000", -1)), "Saved: colour ff8000")
+    compare(Mic.mutedText(look("", "", -1)), "Nothing saved in this look yet")
+    compare(Mic.mutedText(look("wave", "", -1)), "Nothing saved in this look yet")
   }
 }

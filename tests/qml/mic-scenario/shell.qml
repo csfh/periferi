@@ -17,7 +17,7 @@ ShellRoot {
   function pct(v) { return Math.round(v * 100 / 255) }
   function log(tag) {
     console.log("SCN " + tag + " editing=" + mic.editing + " unmuted=" + pct(mic.savedLooks.unmuted.brightness)
-      + " muted=" + pct(mic.savedLooks.muted.brightness) + " gain=" + mic.audio.gain
+      + " muted=" + mic.savedLooks.muted.color + " gain=" + mic.audio.gain
       + " error=" + JSON.stringify(mic.error))
   }
   function step(ms, fn) {
@@ -59,7 +59,7 @@ ShellRoot {
     step(2800,  function() { mark("three-saves") })
     step(3000,  function() { mic.chooseBrightness(70) })
     step(3050,  function() { mic.selectLook("muted") })
-    step(3100,  function() { mic.chooseBrightness(30) })
+    step(3100,  function() { mic.chooseColor(1, "ff8000") })     // the Muted look is a colour only
     step(3150,  function() { mic.selectLook("unmuted") })
     step(3200,  function() { mic.chooseBrightness(80); log("4-three-chosen") })
     step(5000,  function() { log("5-three-saved") })
@@ -71,7 +71,7 @@ ShellRoot {
     step(5300,  function() { gate(true, "write") })
     step(5500,  function() { mic.chooseBrightness(39) })     // 99/255: the fake refuses it
     step(5550,  function() { mic.selectLook("muted") })
-    step(5600,  function() { mic.chooseBrightness(10) })
+    step(5600,  function() { mic.chooseColor(1, "00ff40") })
     step(5900,  function() { gate(false, "write") })
     step(7600,  function() { log("6-after-the-refused-save") })
 
@@ -79,7 +79,7 @@ ShellRoot {
     step(7800,  function() { mark("races") })
     step(8000,  function() { gates(true) })
     step(8200,  function() { mic.refresh("held reads") })
-    step(8500,  function() { mic.chooseBrightness(50) })     // saves the Muted look (the one being edited)
+    step(8500,  function() { mic.chooseColor(1, "ffd800") })     // saves the Muted look (the one being edited)
     step(8600,  function() { mic.chooseAudio("gain", 40) })
     step(9900,  function() { log("7-changed-while-reads-in-flight"); gates(false) })
     step(10700, function() { log("8-after-the-stale-reads-finished (must still show the changes)") })

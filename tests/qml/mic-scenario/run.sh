@@ -27,26 +27,26 @@ audio mic get'
 sorted load "$reads" "the four reads of a refresh"
 same brightness 'look mic save unmuted effect=static color=0000ff brightness=153' "one save"
 same three-saves 'look mic save unmuted effect=static color=0000ff brightness=179
-look mic save muted effect=static color=ff0000 brightness=77
+look mic save muted effect=static color=ff8000
 look mic save unmuted effect=static color=0000ff brightness=204' "three saves on two looks, none lost, in order"
 # The refused save and the one queued behind it go in order, then the pane reads what is really saved.
 if [ "$(segment failure | head -2)" = 'look mic save unmuted effect=static color=0000ff brightness=99
-look mic save muted effect=static color=ff0000 brightness=26' ] && [ "$(segment failure | tail -n +3 | sort)" = "$(echo "$reads" | sort)" ]; then
+look mic save muted effect=static color=00ff40' ] && [ "$(segment failure | tail -n +3 | sort)" = "$(echo "$reads" | sort)" ]; then
   echo "ok   failure: the refused save, the newer save behind it, then one refresh"
 else echo "FAIL failure:"; segment failure; fail=1; fi
 # The held refresh, then the save and the audio change made while it was held.
-if [ "$(segment races | head -4 | sort)" = "$(echo "$reads" | sort)" ] && [ "$(segment races | tail -n +5)" = 'look mic save muted effect=static color=ff0000 brightness=128
+if [ "$(segment races | head -4 | sort)" = "$(echo "$reads" | sort)" ] && [ "$(segment races | tail -n +5)" = 'look mic save muted effect=static color=ffd800
 audio mic set gain=40' ]; then echo "ok   races: the held reads, then the save and the audio change"
 else echo "FAIL races:"; segment races; fail=1; fi
 
 check() { if echo "$out" | grep -q -- "$2"; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
-check "loaded"                                            'SCN 1-loaded editing=unmuted unmuted=39 muted=10 gain=65'
+check "loaded"                                            'SCN 1-loaded editing=unmuted unmuted=39 muted=ff0000 gain=65'
 check "a slider choice is drawn at once"                  'SCN 2-chosen-immediately editing=unmuted unmuted=60 '
 check "saved"                                             'SCN 3-saved editing=unmuted unmuted=60 '
-check "all three saves are drawn at once"                 'SCN 4-three-chosen editing=unmuted unmuted=80 muted=30 '
-check "all three saves landed"                            'SCN 5-three-saved editing=unmuted unmuted=80 muted=30 '
+check "all three saves are drawn at once"                 'SCN 4-three-chosen editing=unmuted unmuted=80 muted=ff8000 '
+check "all three saves landed"                            'SCN 5-three-saved editing=unmuted unmuted=80 muted=ff8000 '
 check "a refused save shows its error"                    'SCN 6-after-the-refused-save .*brightness 99 is refused'
-check "a refused save is read back as what is really saved, the newer save kept" 'SCN 6-after-the-refused-save editing=muted unmuted=80 muted=10 '
-check "changes made while reads are in flight are drawn"  'SCN 7-changed-while-reads-in-flight .*muted=50 .*gain=40'
-check "stale reads do not overwrite the save and the audio change" 'SCN 8-after-the-stale-reads-finished.* muted=50 .*gain=40'
+check "a refused save is read back as what is really saved, the newer save kept" 'SCN 6-after-the-refused-save editing=muted unmuted=80 muted=00ff40 '
+check "changes made while reads are in flight are drawn"  'SCN 7-changed-while-reads-in-flight .*muted=ffd800 .*gain=40'
+check "stale reads do not overwrite the save and the audio change" 'SCN 8-after-the-stale-reads-finished.* muted=ffd800 .*gain=40'
 exit $fail

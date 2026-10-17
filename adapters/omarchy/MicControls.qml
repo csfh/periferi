@@ -22,6 +22,8 @@ Column {
   property QtObject bar: null
   property string moduleId: ""   // the installed module that drives this mic
   property bool active: true     // the panel is open: the microphone is read when that becomes true
+  // The Muted look is the colour the microphone's firmware shows while muted: swatches only.
+  readonly property bool muted: Mic.isMuted(root.peri.editing)
 
   spacing: Style.space(10)
 
@@ -87,8 +89,12 @@ Column {
       readonly property int percent: Mic.brightnessPercent(saved ? root.peri.look.brightness
                                                                   : root.peri.deviceBrightness)
 
-      Label { text: "Brightness  " + leftCol.percent + "%" + (leftCol.saved ? "" : "  (not saved)") }
+      Label {
+        visible: Mic.showBrightness(root.peri.editing)
+        text: "Brightness  " + leftCol.percent + "%" + (leftCol.saved ? "" : "  (not saved)")
+      }
       PanelSlider {
+        visible: Mic.showBrightness(root.peri.editing)
         width: parent.width
         bar: root.bar
         minimum: 0
@@ -99,7 +105,7 @@ Column {
         // Released only: this saves the look. It never reaches the microphone.
         onReleased: function(v) { root.peri.chooseBrightness(v) }
       }
-      Caption { text: Mic.lookText(root.peri.look) }
+      Caption { text: root.muted ? Mic.mutedText(root.peri.look) : Mic.lookText(root.peri.look) }
     }
 
     // --- right: effects, then colours -----------------------------------------------------------
@@ -108,9 +114,10 @@ Column {
       width: leftCol.width
       spacing: Style.space(8)
 
-      Label { text: "Effect" }
+      Label { visible: !root.muted; text: "Effect" }
       Flow {
         id: effectFlow
+        visible: !root.muted
         width: parent.width
         spacing: Style.space(6)
         Repeater {
@@ -125,10 +132,10 @@ Column {
         }
       }
 
-      Label { visible: Mic.showSpeed(root.peri.look); text: "Speed" }
+      Label { visible: !root.muted && Mic.showSpeed(root.peri.look); text: "Speed" }
       Row {
         id: speedRow
-        visible: Mic.showSpeed(root.peri.look)
+        visible: !root.muted && Mic.showSpeed(root.peri.look)
         width: parent.width
         spacing: Style.space(6)
         Repeater {
@@ -145,11 +152,11 @@ Column {
       }
 
       Label {
-        visible: Mic.showColors(root.peri.look)
-        text: Mic.maxColors(root.peri.look.effect) === 2 ? "First colour" : "Colour"
+        visible: Mic.showColorsFor(root.peri.editing, root.peri.look)
+        text: !root.muted && Mic.maxColors(root.peri.look.effect) === 2 ? "First colour" : "Colour"
       }
       Flow {
-        visible: Mic.showColors(root.peri.look)
+        visible: Mic.showColorsFor(root.peri.editing, root.peri.look)
         width: parent.width
         spacing: Style.space(8)
         Repeater {
@@ -173,9 +180,9 @@ Column {
       }
 
       // Breathing takes a second colour, once it has a first.
-      Label { visible: Mic.showSecondColor(root.peri.look); text: "Second colour" }
+      Label { visible: !root.muted && Mic.showSecondColor(root.peri.look); text: "Second colour" }
       Flow {
-        visible: Mic.showSecondColor(root.peri.look)
+        visible: !root.muted && Mic.showSecondColor(root.peri.look)
         width: parent.width
         spacing: Style.space(8)
         Repeater {
@@ -199,7 +206,7 @@ Column {
       }
 
       Button {
-        visible: Mic.showRandomColors(root.peri.look)
+        visible: !root.muted && Mic.showRandomColors(root.peri.look)
         bordered: true
         selected: root.peri.look.color === ""
         text: "Random colours"
