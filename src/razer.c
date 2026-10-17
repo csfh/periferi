@@ -97,32 +97,6 @@ size_t razer_effect_build(uint8_t storage, uint8_t effect, const struct razer_ef
     }
 }
 
-bool razer_event_decode(const uint8_t *report, size_t len, struct razer_event *ev)
-{
-    *ev = (struct razer_event){ RAZER_EVENT_NONE, 0 };
-    if (len < 3 || report[0] != 0x05)
-        return false;
-    if (report[1] == 0x11 && report[2] <= 1) {
-        // The wire byte is 01 while muted; the event carries the state (0 muted, 1 unmuted),
-        // see the report list in razer.h for how that was established.
-        *ev = (struct razer_event){ RAZER_EVENT_MUTE, report[2] == 0 ? 1 : 0 };
-        return true;
-    }
-    if (report[1] == 0x0f) {
-        *ev = (struct razer_event){ RAZER_EVENT_DIAL, report[2] };
-        return true;
-    }
-    return false;
-}
-
-void razer_state_apply(struct razer_state *state, const struct razer_event *ev)
-{
-    if (ev->kind == RAZER_EVENT_MUTE)
-        state->mute = ev->value;
-    else if (ev->kind == RAZER_EVENT_DIAL)
-        state->dial = ev->value;
-}
-
 int razer_effect_lookup(const char *name, bool *reverse)
 {
     static const struct { const char *name; int id; bool reverse; } effects[] = {

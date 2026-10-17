@@ -39,10 +39,6 @@ void audio_handle(const char *args, char *reply, size_t size);
 // to the device, and is the only one of the three that writes to it.
 void look_handle(const char *args, char *reply, size_t size);
 
-// The mic's mute state changed: apply the saved look for the new state, if following is on (the
-// default) and a look is saved for it. Called by the daemon after a quiet period, never by a request.
-void follow_mute_apply(const char *module_id, bool unmuted);
-
 // args: "<module-id> brightness=<0-255>". Asks for a live-only write (storage 0), capped by the
 // module's limits.max_brightness. The Seiren's stored value followed it anyway (verified
 // 2026-10-14), so treat every set as a write to the device's memory.

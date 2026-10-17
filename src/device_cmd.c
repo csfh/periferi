@@ -13,7 +13,6 @@
 #include <unistd.h>
 
 #include "audio.h"
-#include "controls.h"
 #include "module.h"
 #include "camera.h"
 #include "razer90_dev.h"
@@ -418,15 +417,9 @@ void status_handle(const char *args, char *reply, size_t size)
         return;
     }
     // The firmware bytes are shown raw: what they mean is not established. Brightness is the
-    // value the device keeps (storage 1), not necessarily the one it is showing right now. Mute
-    // and dial are what the mic last reported to the daemon, "unknown" until it does.
-    struct razer_state controls = controls_state(m.id);
-    char dial[8] = "unknown";
-    if (controls.dial >= 0)
-        snprintf(dial, sizeof dial, "%d", controls.dial);
-    snprintf(reply, size, "ok module=%s firmware=%02x%02x brightness=%u mute=%s dial=%s\n", m.id,
-             firmware[0], firmware[1], brightness,
-             controls.mute < 0 ? "unknown" : controls.mute ? "unmuted" : "muted", dial);
+    // value the device keeps (storage 1), not necessarily the one it is showing right now.
+    snprintf(reply, size, "ok module=%s firmware=%02x%02x brightness=%u\n", m.id, firmware[0],
+             firmware[1], brightness);
 }
 
 // "0000ff" -> {0x00, 0x00, 0xff}. Exactly six hex digits.
@@ -772,15 +765,15 @@ static void reply_look(char *reply, size_t size, const char *id, enum peri_look_
     if (l->brightness >= 0)
         snprintf(brightness, sizeof brightness, "%d", l->brightness);
     snprintf(reply, size,
-             "ok module=%s look=%s effect=%s color=%s color2=%s speed=%s brightness=%s follow=%s\n", id,
+             "ok module=%s look=%s effect=%s color=%s color2=%s speed=%s brightness=%s\n", id,
              peri_look_which_name(which), l->effect[0] ? l->effect : "unset",
              l->color[0] ? l->color : "none", l->color2[0] ? l->color2 : "none",
-             l->speed[0] ? l->speed : "default", brightness, peri_look_follow(id) ? "yes" : "no");
+             l->speed[0] ? l->speed : "default", brightness);
 }
 
 // Send a saved look to the device: its effect, then its brightness. Used by the `look apply`
-// request and by following the mic's mute state. The saved look is checked again, so a hand-edited
-// file can never send what `set` would refuse. The reply is "ok ..." or "err ...".
+// request only. The saved look is checked again, so a hand-edited file can never send what `set`
+// would refuse. The reply is "ok ..." or "err ...".
 static void apply_saved_look(const char *id, enum peri_look_which which, const struct peri_module *m,
                              char *reply, size_t size)
 {
@@ -835,7 +828,7 @@ static void apply_saved_look(const char *id, enum peri_look_which which, const s
 
 void look_handle(const char *args, char *reply, size_t size)
 {
-    static const char usage[] = "err usage: look <module-id> follow <on|off|get> | get|save|apply <unmuted|muted> "
+    static const char usage[] = "err usage: look <module-id> get|save|apply <unmuted|muted> "
                                 "[effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] "
                                 "[brightness=<0-255>]\n";
     char line[PERI_REQUEST_MAX + 1], *rest;
@@ -843,25 +836,6 @@ void look_handle(const char *args, char *reply, size_t size)
     const char *id = strtok_r(line, " \n", &rest);
     const char *verb = strtok_r(nullptr, " \n", &rest);
     const char *which_name = strtok_r(nullptr, " \n", &rest);
-    // look <module-id> follow on|off|get: whether a mute change applies the matching look.
-    if (id && verb && strcmp(verb, "follow") == 0) {
-        bool on = which_name && strcmp(which_name, "on") == 0;
-        bool known = on || (which_name && (strcmp(which_name, "off") == 0 || strcmp(which_name, "get") == 0));
-        struct peri_module fm;
-        if (!known || strtok_r(nullptr, " \n", &rest)) {
-            snprintf(reply, size, "%s", usage);
-            return;
-        }
-        if (!installed_razer_module(id, &fm, reply, size))
-            return;
-        if (strcmp(which_name, "get") != 0 && !peri_look_set_follow(id, on)) {
-            err(reply, size, "could not save the setting", id);
-            return;
-        }
-        snprintf(reply, size, "ok module=%s follow=%s\n", id, peri_look_follow(id) ? "yes" : "no");
-        return;
-    }
-
     enum peri_look_which which;
     if (!id || !verb || !peri_look_which_parse(which_name, &which)) {
         snprintf(reply, size, "%s", usage);
@@ -1032,24 +1006,4 @@ void audio_handle(const char *args, char *reply, size_t size)
             return;
         }
     reply_audio(reply, size, id, card);
-}
-
-// The mic's mute state changed (after the quiet period, see follow.h): apply the saved look for the
-// new state, if following is on and a look is saved for it. The result goes to the journal.
-void follow_mute_apply(const char *module_id, bool unmuted)
-{
-    if (!peri_look_follow(module_id))
-        return;
-    char reply[256];
-    struct peri_module m;
-    if (!installed_razer_module(module_id, &m, reply, sizeof reply)) {
-        fprintf(stderr, "perid: follow mute: %s", reply);
-        return;
-    }
-    enum peri_look_which which = unmuted ? PERI_LOOK_UNMUTED : PERI_LOOK_MUTED;
-    struct peri_look l = peri_look_load(module_id, which);
-    if (!l.effect[0] && l.brightness < 0)
-        return; // nothing is saved for this state: nothing to send
-    apply_saved_look(module_id, which, &m, reply, sizeof reply);
-    fprintf(stderr, "perid: follow mute (%s): %s", peri_look_which_name(which), reply);
 }

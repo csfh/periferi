@@ -9,11 +9,6 @@
 // ever opened. Returns an fd, or -1 after printing why.
 int razer_open(const char *node);
 
-// The daemon's reader: the same interface opened read-only and non-blocking, to follow the
-// mic's own reports (see razer_event_decode). Quiet: returns -1 without printing, since the
-// daemon tries again every few seconds while the mic is away.
-int razer_open_events(const char *node);
-
 // Send one request as a feature report and poll for its reply (about one second).
 // `raw` receives the bytes of the last read, even when they do not decode (a reply that is not
 // 64 bytes is never decoded), and `got` says how many bytes that read returned. Returns 0 for a valid reply (check reply->status), a

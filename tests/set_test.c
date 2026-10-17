@@ -94,6 +94,8 @@ int main(void)
     refuse_look("", "usage:");
     refuse_look("brio", "usage:");
     refuse_look("brio follow maybe", "usage:");
+    refuse_look("brio follow off", "usage:"); // the verb is gone: a stale client fails loudly
+    refuse_look("brio follow on", "usage:");
     refuse_look("brio get unmuted effect=static", "usage:");
     refuse_look("brio save sideways", "usage:");
     refuse_look("brio save unmuted effect=static effect=none", "usage:");
@@ -103,7 +105,6 @@ int main(void)
     refuse_look("brio save unmuted brightness=+7", "brightness must be a whole number from 0 to 255");
     // A good request for a module that is not installed stops there.
     refuse_look("brio save unmuted effect=none", "no such installed module");
-    refuse_look("brio follow off", "no such installed module");
 
     fov_refuse_padded();
 

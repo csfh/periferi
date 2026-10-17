@@ -2,14 +2,12 @@
 
 #include <errno.h>
 #include <limits.h>
-#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include "common.h"
-#include "controls.h"
 #include "inventory.h"
 #include "module.h"
 #include "request.h"
@@ -183,8 +181,6 @@ static void handle(int client)
     if ((peri_request_verb(req, "use", &args) || peri_request_verb(req, "remove", &args)) && args) {
         bool use = req[0] == 'u';
         module_verb(client, use, (char *)args);
-        controls_detach(); // a module came or went: the reader decides again
-        controls_rescan();
         return;
     }
     if (peri_request_verb(req, "rgb", &args) && args) {
@@ -260,36 +256,8 @@ int main(void)
     }
     fprintf(stderr, "perid: listening on %s\n", addr.sun_path);
 
-    // One thread: wait for a client or for the microphone's controls, whichever speaks first.
-    // While no device is attached, wake every few seconds to look for one.
-    controls_rescan();
+    // One thread, one client at a time. The daemon only answers requests: it watches no device.
     while (!stop) {
-        struct pollfd fds[2] = { { .fd = fd, .events = POLLIN },
-                                 { .fd = controls_fd(), .events = POLLIN } };
-        // Wake for a client, for the mic, every few seconds to look for it while it is away, and
-        // when a mute change has waited out its quiet period.
-        int wait = controls_fd() < 0 ? 3000 : -1;
-        long follow_wait = controls_follow_timeout();
-        if (follow_wait >= 0 && (wait < 0 || follow_wait < wait))
-            wait = (int)follow_wait;
-        int ready = poll(fds, 2, wait);
-        if (ready < 0) {
-            if (errno == EINTR)
-                continue;
-            perror("perid: poll");
-            break;
-        }
-        if (controls_fd() >= 0 && fds[1].revents)
-            controls_service(fds[1].revents);
-        controls_rescan(); // no-op while attached
-
-        char followed[49];
-        int look = controls_follow_take(followed, sizeof followed);
-        if (look >= 0)
-            follow_mute_apply(followed, look == 1);
-
-        if (!(fds[0].revents & POLLIN))
-            continue;
         int client = accept4(fd, nullptr, nullptr, SOCK_CLOEXEC);
         if (client < 0) {
             if (errno == EINTR || errno == EAGAIN)
@@ -300,7 +268,6 @@ int main(void)
         handle(client);
         close(client);
     }
-    controls_detach();
 
     unlink(addr.sun_path);
     close(fd);

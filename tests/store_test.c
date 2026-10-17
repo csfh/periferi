@@ -247,35 +247,26 @@ int main(void)
     write_file(file, "[unmuted]\neffect = \"spectrum\"\nspeed = \"fast\"\n");
     CHECK(peri_look_load(ID, UN).speed[0] == '\0');                    // a stray speed is ignored
 
-    // Following the mute state is on unless the file says otherwise, and no save changes it.
-    CHECK(peri_look_follow(ID));
-    CHECK(peri_look_follow("nothing-saved-for-this"));
+    // A file written while the daemon still followed the mute state starts with a flag. It is
+    // ignored: both looks load, and the next save writes the file without it.
+    write_file(file, "follow_mute = false\n\n[unmuted]\neffect = \"spectrum\"\nbrightness = 255\n\n"
+                     "[muted]\neffect = \"static\"\ncolor = \"ff0000\"\nbrightness = 38\n");
+    l = peri_look_load(ID, UN);
+    CHECK(strcmp(l.effect, "spectrum") == 0 && l.brightness == 255);
+    l = peri_look_load(ID, MU);
+    CHECK(strcmp(l.effect, "static") == 0 && strcmp(l.color, "ff0000") == 0 && l.brightness == 38);
     struct peri_look keep = look("breathing", "00ff00", 80);
     CHECK(peri_look_save(ID, UN, &keep));
-    CHECK(peri_look_set_follow(ID, false));
-    CHECK(!peri_look_follow(ID));
-    l = peri_look_load(ID, UN);                                  // turning it off keeps the looks
-    CHECK(strcmp(l.effect, "breathing") == 0 && l.brightness == 80);
-    CHECK(peri_look_save(ID, MU, &keep));                        // and saving keeps it off
-    CHECK(!peri_look_follow(ID));
-    CHECK(strcmp(peri_look_load(ID, UN).effect, "breathing") == 0);
-    CHECK(peri_look_set_follow(ID, true));
-    CHECK(peri_look_follow(ID));
-    FILE *sf = fopen(file, "r");                                 // back on: the line is gone again
+    FILE *sf = fopen(file, "r");
     char whole[512] = "";
     if (sf) {
         size_t got = fread(whole, 1, sizeof whole - 1, sf);
         whole[got] = '\0';
         fclose(sf);
     }
-    CHECK(strstr(whole, "follow_mute") == nullptr && strstr(whole, "[unmuted]") != nullptr);
-    CHECK(!peri_look_set_follow("../evil", false) && !peri_look_set_follow(nullptr, false));
-    CHECK(peri_look_follow("../evil"));                          // an invalid id reads as the default
-    write_file(file, "follow_mute = false\n\n[muted]\neffect = \"spectrum\"\n");
-    CHECK(!peri_look_follow(ID) && strcmp(peri_look_load(ID, MU).effect, "spectrum") == 0);
-    write_file(file, "follow_mute = \"no\"\n");                  // not a boolean: the default
-    CHECK(peri_look_follow(ID));
-    CHECK(peri_look_set_follow(ID, true));
+    CHECK(strstr(whole, "follow_mute") == nullptr && strstr(whole, "[unmuted]") != nullptr
+          && strstr(whole, "[muted]") != nullptr);
+    CHECK(strcmp(peri_look_load(ID, MU).color, "ff0000") == 0);   // the other look survived the save
 
     // The old single-look format (what an earlier version wrote) loads as two empty looks, and
     // the first save replaces it.
