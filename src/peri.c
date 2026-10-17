@@ -725,6 +725,27 @@ static int cmd_razer_getter(const char *arg, const char *id_text, const char *mo
     return razer_send_and_print(name, 0x0f, (uint8_t)id, 6, args);
 }
 
+// A guessed write: `0f 14` is the setter of the getter `0f 94`, which answered `01 00 00 00 00 00`. This
+// assumes the layout mirrors the read: 01, red, green, blue, 0, 0. It may be kept in the microphone's
+// own memory. Only the two values the owner approved (red to try, black to put back the value that
+// was read) are accepted, checked before the device is opened.
+static int cmd_razer_color_set(const char *arg, const char *rgb)
+{
+    const char *name = node_name(arg);
+    if (!name)
+        return 2;
+    uint8_t args[6] = { 0x01, 0, 0, 0, 0, 0 };
+    if (rgb && strcmp(rgb, "ff0000") == 0)
+        args[1] = 0xff;
+    else if (!rgb || strcmp(rgb, "000000") != 0) {
+        fprintf(stderr, "peri: color-set takes ff0000 or 000000 for now\n");
+        return 2;
+    }
+    if (!node_allowed(name, false))
+        return 1;
+    return razer_send_and_print(name, 0x0f, 0x14, 6, args);
+}
+
 // The queries `peri razer90` may send to the DeathAdder: reads only (firmware, battery, charging,
 // DPI, poll rate). Nothing that sets a mode, a DPI, a poll rate or lighting is on it. `args` is
 // at least `size` long. Prints the raw bytes first, so a reply that does not decode can be told
@@ -1253,6 +1274,9 @@ int main(int argc, char **argv)
     if ((argc == 5 || argc == 6) && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "getter") == 0)
         return cmd_razer_getter(argv[2], argv[4], argc == 6 ? argv[5] : nullptr);
 
+    if (argc == 5 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "color-set") == 0)
+        return cmd_razer_color_set(argv[2], argv[4]);
+
     if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "display-set") == 0)
         return cmd_razer_display_set(argv[2], argv[4], argv[5]);
 
@@ -1289,6 +1313,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|getter <90-9f> [module 0-7, 94 only]|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0|1>|getter <90-9f> [module 0-7, 94 only]|color-set <ff0000|000000>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }
