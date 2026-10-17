@@ -1,6 +1,5 @@
 // peri: command line client for the peri core daemon.
 
-#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -589,25 +588,17 @@ static int cmd_feature(const char *arg, const char *id_arg, const char *len_arg)
 // that read (firmware get, brightness get, and the standard-LED getters for effect and colour).
 // Setting a device mode or any lighting is never on it. `args` is at least `size` long. The
 // getters take variable storage 1 and LED id 0, then zero placeholders for the values.
-static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[5]; uint8_t select_max; } razer_queries[] = {
-    { "firmware", 0x00, 0x81, 2, { 0, 0, 0, 0, 0 }, 0 },
-    { "brightness", 0x0f, 0x84, 3, { 0x01, 0x00, 0x00, 0, 0 }, 0 },
-    { "led-effect", 0x03, 0x82, 3, { 0x01, 0x00, 0x00, 0, 0 }, 0 },
-    { "led-rgb", 0x03, 0x81, 5, { 0x01, 0x00, 0x00, 0x00, 0x00 }, 0 },
-    // The getters of two commands whose setters a public protocol note names for the Seiren V3 Pro
-    // (class 0f, ids 12 "display switch" and 13 "tap"; a getter is the setter's id with 0x80 set).
-    // Sizes are the note's. The arguments are zero placeholders: which bytes select what is unknown.
-    // Optional first and second bytes, 0 up to select_max, let a read ask about another module or gesture.
-    { "display-switch", 0x0f, 0x92, 3, { 0, 0, 0, 0, 0 }, 7 },
-    { "tap", 0x0f, 0x93, 4, { 0, 0, 0, 0, 0 }, 7 },
+static const struct { const char *name; uint8_t cls, cmd, size; uint8_t args[5]; } razer_queries[] = {
+    { "firmware", 0x00, 0x81, 2, { 0, 0, 0, 0, 0 } },
+    { "brightness", 0x0f, 0x84, 3, { 0x01, 0x00, 0x00, 0, 0 } },
+    { "led-effect", 0x03, 0x82, 3, { 0x01, 0x00, 0x00, 0, 0 } },
+    { "led-rgb", 0x03, 0x81, 5, { 0x01, 0x00, 0x00, 0x00, 0x00 } },
 };
-
-static int razer_send_and_print(const char *name, uint8_t cls, uint8_t cmd, uint8_t size, const uint8_t *args);
 
 // Send one allowlisted query to a Razer control interface and print the raw reply frame,
 // then what it decodes to. Anything that is not a clean reply is reported, never retried
 // by other means.
-static int cmd_razer(const char *arg, const char *query, const char *select, const char *select2)
+static int cmd_razer(const char *arg, const char *query)
 {
     const char *name = node_name(arg);
     if (!name)
@@ -617,42 +608,20 @@ static int cmd_razer(const char *arg, const char *query, const char *select, con
     while (q < sizeof razer_queries / sizeof *razer_queries && strcmp(razer_queries[q].name, query))
         q++;
     if (q == sizeof razer_queries / sizeof *razer_queries) {
-        fprintf(stderr, "peri: unknown razer query '%s' (known: firmware, brightness, led-effect, led-rgb, display-switch, tap)\n", query);
+        fprintf(stderr, "peri: unknown razer query '%s' (known: firmware, brightness, led-effect, led-rgb)\n", query);
         return 2;
-    }
-    uint8_t args[5];
-    memcpy(args, razer_queries[q].args, sizeof args);
-    // Up to two selector bytes, each one digit from 0 up to the query's own limit; a query with no
-    // limit takes none. They are checked here, before the device is opened.
-    const char *picks[2] = { select, select2 };
-    for (int i = 0; i < 2; i++) {
-        if (!picks[i])
-            continue;
-        if (!razer_queries[q].select_max || picks[i][0] < '0' || picks[i][0] - '0' > razer_queries[q].select_max
-            || picks[i][1] != '\0') {
-            fprintf(stderr, "peri: '%s' takes no selector, or up to two digits from 0 to %u\n", query,
-                    razer_queries[q].select_max);
-            return 2;
-        }
-        args[i] = (uint8_t)(picks[i][0] - '0');
     }
     if (!node_allowed(name, false))
         return 1;
 
-    return razer_send_and_print(name, razer_queries[q].cls, razer_queries[q].cmd, razer_queries[q].size, args);
-}
-
-// Open the Seiren's control interface, send one frame and print the raw reply, then what it decodes
-// to. Returns 0 only for a reply whose status is ok.
-static int razer_send_and_print(const char *name, uint8_t cls, uint8_t cmd, uint8_t size, const uint8_t *args)
-{
     int fd = razer_open(name);
     if (fd < 0)
         return 1;
     struct razer_reply reply;
     uint8_t raw[RAZER_REPORT_LEN];
     int got;
-    int rc = razer_call(fd, cls, cmd, size, args, &reply, raw, &got);
+    int rc = razer_call(fd, razer_queries[q].cls, razer_queries[q].cmd, razer_queries[q].size,
+                        razer_queries[q].args, &reply, raw, &got);
     close(fd);
 
     if (got > 0) {
@@ -672,436 +641,6 @@ static int razer_send_and_print(const char *name, uint8_t cls, uint8_t cmd, uint
         printf(" %02x", reply.args[i]);
     putchar('\n');
     return reply.status == RAZER_STATUS_OK ? 0 : 1;
-}
-
-// The one write `peri razer` can make: switch one of the four display modules (a public note for
-// the V3 Pro names them headphone, mic-gain, voice-activated and mute-effect; the order is unproven) on
-// or off, or with another value up to 7 (it may be a choice, not only on and off). Class 0f, command 0x12,
-// three bytes: 01, the module, the value (the reads showed 01 <module> <1> for modules 0 to 3). This may be kept in the microphone's own memory. The module and the value are
-// checked before the device is opened, and the caller reads the value first so it can put it back.
-static int cmd_razer_display_set(const char *arg, const char *module, const char *value)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    if (!module || !value || module[0] < '0' || module[0] > '3' || module[1] != '\0'
-        || value[0] < '0' || value[0] > '7' || value[1] != '\0') {
-        fprintf(stderr, "peri: display-set takes a module 0-3 and a value 0-7\n");
-        return 2;
-    }
-    if (!node_allowed(name, false))
-        return 1;
-    const uint8_t args[3] = { 0x01, (uint8_t)(module[0] - '0'), (uint8_t)(value[0] - '0') };
-    return razer_send_and_print(name, 0x0f, 0x12, 3, args);
-}
-
-// Read-only search for the command that sets the mute effect's colour: ask one class 0f getter, id
-// 0x90 to 0x9f (the high bit is the getter convention), for six zero argument bytes and print what the
-// device says, including "not supported". The two ids already known have their own queries. Bounds are
-// checked before the device is opened. Only ever a getter: no id below 0x90 can be reached.
-static int cmd_razer_getter(const char *arg, const char *id_text, const char *module)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    char *end = nullptr;
-    unsigned long id = id_text ? strtoul(id_text, &end, 16) : 0;
-    if (!id_text || !*id_text || *end != '\0' || strlen(id_text) > 2 || id < 0x90 || id > 0x9f || id == 0x92
-        || id == 0x93) {
-        fprintf(stderr, "peri: getter takes one class 0f id from 90 to 9f in hex, other than 92 and 93\n");
-        return 2;
-    }
-    uint8_t args[6] = { 0 };
-    if (module) {
-        // Only 0x94 takes a module (one digit 0-7), laid out like the display switch: 01, module, zeros.
-        if (id != 0x94 || module[0] < '0' || module[0] > '7' || module[1] != '\0') {
-            fprintf(stderr, "peri: only getter 94 takes a module, one digit from 0 to 7\n");
-            return 2;
-        }
-        args[0] = 0x01;
-        args[1] = (uint8_t)(module[0] - '0');
-    }
-    if (!node_allowed(name, false))
-        return 1;
-    return razer_send_and_print(name, 0x0f, (uint8_t)id, 6, args);
-}
-
-// A guessed write: `0f 14` is the setter of the getter `0f 94`, which answered `01 00 00 00 00 00`.
-// Nothing is known about the five bytes after the leading 01. They are given as ten hex digits, or as
-// the shorthands ff0000 (01 ff 00 00 00 00) and 000000 (the value that was read). It may be kept in the
-// microphone's own memory, so the caller reads `0f 94` first to have a value to put back. Only this
-// command can be reached, and the digits are checked before the device is opened.
-// Read-only census of the commands the microphone knows: every getter id 0x80 to 0xbf in classes 0x00
-// to 0x0f, each asked once for six zero argument bytes. A command that is not supported answers status
-// 5, so only the other answers are printed. The high bit is the getter convention, so no setter id
-// (such as the device-mode set, 00 04) can be reached. A class that gives no clean reply five times in a row is skipped.
-// A guessed write: the standard static-colour effect frame (class 0f, command 0x02) with another value
-// in its first argument byte. A public note calls that byte a "profile"; every frame sent so far used
-// 0 ("now") or, for brightness, 1 ("kept"). The mute look may live in another slot. Profiles 2 to 7 only,
-// one static colour, zone 0, checked before the device is opened. The device's own status says whether it
-// knows the slot, and a slot that is kept may overwrite what the microphone stored there, which the
-// owner's saved looks can put back with Apply.
-static int cmd_razer_profile_static(const char *arg, const char *profile, const char *rgb)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    bool ok = profile && profile[0] >= '2' && profile[0] <= '7' && profile[1] == '\0' && rgb && strlen(rgb) == 6;
-    for (int i = 0; ok && i < 6; i++)
-        ok = isxdigit((unsigned char)rgb[i]);
-    if (!ok) {
-        fprintf(stderr, "peri: profile-static takes a profile 2-7 and six hex digits\n");
-        return 2;
-    }
-    uint8_t color[3];
-    for (int i = 0; i < 3; i++) {
-        char pair[3] = { rgb[2 * i], rgb[2 * i + 1], '\0' };
-        color[i] = (uint8_t)strtoul(pair, nullptr, 16);
-    }
-    uint8_t args[RAZER_EFFECT_ARGS_MAX];
-    size_t size = razer_effect_args((uint8_t)(profile[0] - '0'), RAZER_EFFECT_STATIC, color, args);
-    if (size == 0)
-        return 2;
-    if (!node_allowed(name, false))
-        return 1;
-    return razer_send_and_print(name, 0x0f, 0x02, (uint8_t)size, args);
-}
-
-// Read-only: one of the class 08 getters the census found (82 86 88 94 95 96 97 98), asked for six
-// argument bytes of which the first two may be a digit 0 to 7 each (the rest zero). Class 08 is not in
-// the public note; this only reads. Anything else is refused before the device is opened.
-static int cmd_razer_class8(const char *arg, const char *id_text, const char *b0, const char *b1)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    static const unsigned known[] = { 0x82, 0x86, 0x88, 0x94, 0x95, 0x96, 0x97, 0x98 };
-    char *end = nullptr;
-    unsigned long id = id_text ? strtoul(id_text, &end, 16) : 0;
-    bool ok = id_text && *id_text && *end == '\0' && strlen(id_text) == 2;
-    bool listed = false;
-    for (size_t i = 0; i < sizeof known / sizeof *known; i++)
-        listed = listed || known[i] == id;
-    const char *picks[2] = { b0, b1 };
-    for (int i = 0; i < 2; i++)
-        if (picks[i] && (picks[i][0] < '0' || picks[i][0] > '7' || picks[i][1] != '\0'))
-            ok = false;
-    if (!ok || !listed) {
-        fprintf(stderr, "peri: class8 takes one of 82 86 88 94 95 96 97 98 and up to two digits 0-7\n");
-        return 2;
-    }
-    uint8_t args[6] = { 0 };
-    for (int i = 0; i < 2; i++)
-        if (picks[i])
-            args[i] = (uint8_t)(picks[i][0] - '0');
-    if (!node_allowed(name, false))
-        return 1;
-    return razer_send_and_print(name, 0x08, (uint8_t)id, 6, args);
-}
-
-// A guessed write: fill the ring's custom-frame buffer (class 0f, command 0x03) with one colour. Layout
-// from a public note: profile 0, region 0, row 0, first column 0, last column, then three bytes per
-// LED. The last column is 0 to 11 (the ring has 10 or 12 LEDs, reports differ). This only fills the
-// buffer; the custom effect has to be selected for the unmuted ring to show it (see effect-custom).
-// The firmware's mute display may use the same buffer, which is what this tests.
-static int cmd_razer_frame_fill(const char *arg, const char *rgb, const char *last_text)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    char *end = nullptr;
-    unsigned long last = last_text ? strtoul(last_text, &end, 10) : 99;
-    bool ok = rgb && strlen(rgb) == 6 && last_text && *last_text && *end == '\0' && last <= 11;
-    for (int i = 0; ok && i < 6; i++)
-        ok = isxdigit((unsigned char)rgb[i]);
-    if (!ok) {
-        fprintf(stderr, "peri: frame-fill takes six hex digits and a last column 0-11\n");
-        return 2;
-    }
-    uint8_t color[3];
-    for (int i = 0; i < 3; i++) {
-        char pair[3] = { rgb[2 * i], rgb[2 * i + 1], '\0' };
-        color[i] = (uint8_t)strtoul(pair, nullptr, 16);
-    }
-    uint8_t args[5 + 3 * 12] = { 0 };
-    args[4] = (uint8_t)last;
-    for (unsigned long led = 0; led <= last; led++)
-        memcpy(args + 5 + 3 * led, color, 3);
-    if (!node_allowed(name, false))
-        return 1;
-    return razer_send_and_print(name, 0x0f, 0x03, (uint8_t)(5 + 3 * (last + 1)), args);
-}
-
-// A guessed write: select the custom-frame effect (class 0f, command 0x02, effect id 8, nothing else).
-// A public note says frames are uploaded and then effect 8 is selected. Replaces the applied effect until
-// the owner applies a look again.
-static int cmd_razer_effect_custom(const char *arg)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    if (!node_allowed(name, false))
-        return 1;
-    const uint8_t args[6] = { 0x00, 0x00, 0x08, 0x00, 0x00, 0x00 };
-    return razer_send_and_print(name, 0x0f, 0x02, 6, args);
-}
-
-// Read-only: the brightness getter (class 0f, command 0x84) asked for every LED id 0 to 255, with variable
-// storage 0 and then 1, to see whether any id other than the main ring has a brightness of its own (the
-// mute display might). Prints the main ring's value and every id that is refused differently or reads
-// differently from it. Writes nothing.
-static int cmd_razer_brightness_census(const char *arg)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    if (!node_allowed(name, false))
-        return 1;
-    int fd = razer_open(name);
-    if (fd < 0)
-        return 1;
-    for (unsigned storage = 0; storage <= 1; storage++) {
-        int main_value = -1, main_status = -1, odd = 0, bad = 0;
-        for (unsigned led = 0; led <= 0xff && bad < 5; led++) {
-            uint8_t args[3] = { (uint8_t)storage, (uint8_t)led, 0 };
-            struct razer_reply reply;
-            uint8_t raw[RAZER_REPORT_LEN];
-            int got;
-            int rc = razer_call(fd, 0x0f, 0x84, 3, args, &reply, raw, &got);
-            if (rc < 0) {
-                bad++;
-                printf("storage %u led %02x: no clean reply\n", storage, led);
-                continue;
-            }
-            bad = 0;
-            int value = reply.len >= 3 ? reply.args[2] : -1;
-            if (led == 0) {
-                main_value = value;
-                main_status = reply.status;
-                printf("storage %u led 00: status %02x value %d\n", storage, reply.status, value);
-            } else if (reply.status != main_status || value != main_value) {
-                odd++;
-                printf("storage %u led %02x: status %02x value %d\n", storage, led, reply.status, value);
-            }
-        }
-        printf("storage %u: %d ids differ from led 00\n", storage, odd);
-    }
-    close(fd);
-    return 0;
-}
-
-// A write: one of the standard effects (none, static, breathing, spectrum, wave, wave-reverse), with up to
-// two colours, sent to ONE zone number. Found by the owner's eye on 2026-10-16: zone 0x19 is the colour
-// the microphone shows while muted. Zones 1 to ff, storage 0 ("now"); checked before the device is opened.
-static int cmd_razer_zone_effect(const char *arg, const char *zone, const char *effect_name, const char *c1,
-                                 const char *c2, uint8_t storage)
-{
-    // Zone 0 is the main ring: allowed only for the kept variant, which the owner approved for
-    // the persistence test.
-    unsigned zone_min = storage == 1 ? 0 : 1;
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    char *zend = nullptr;
-    unsigned long z = zone && *zone ? strtoul(zone, &zend, 16) : 0;
-    bool reverse = false;
-    int effect = effect_name ? razer_effect_lookup(effect_name, &reverse) : -1;
-    bool ok = zone && strlen(zone) <= 2 && zend && *zend == '\0' && z >= zone_min && z <= 0xff && effect >= 0 && storage <= 1;
-    const char *cols[2] = { c1, c2 };
-    struct razer_effect_opts opts = { 0 };
-    for (int i = 0; ok && i < 2; i++) {
-        if (!cols[i])
-            continue;
-        ok = strlen(cols[i]) == 6;
-        for (int j = 0; ok && j < 6; j++)
-            ok = isxdigit((unsigned char)cols[i][j]);
-        if (!ok)
-            break;
-        for (int k = 0; k < 3; k++) {
-            char pair[3] = { cols[i][2 * k], cols[i][2 * k + 1], '\0' };
-            opts.rgb[i][k] = (uint8_t)strtoul(pair, nullptr, 16);
-        }
-        opts.colors = (uint8_t)(i + 1);
-    }
-    opts.reverse = reverse ? 1 : 0;
-    uint8_t args[RAZER_EFFECT_ARGS_MAX];
-    size_t size = ok ? razer_effect_build(storage, (uint8_t)effect, &opts, args) : 0;
-    if (!ok || size == 0) {
-        fprintf(stderr, "peri: zone-effect takes a zone 1-ff, an effect (none static breathing spectrum wave "
-                        "wave-reverse) and the colours it needs\n");
-        return 2;
-    }
-    args[1] = (uint8_t)z;
-    if (!node_allowed(name, false))
-        return 1;
-    return razer_send_and_print(name, 0x0f, 0x02, (uint8_t)size, args);
-}
-
-// A write the microphone may KEEP across a power cycle: brightness with variable storage 1 (class 0f, command
-// 0x04, args 01 00 <value>). Storage 0 ("now only") was lost on a replug; this tests whether 1 is kept. It writes
-// the microphone's own memory, so it is for one deliberate test, not for a slider.
-static int cmd_razer_brightness_kept(const char *arg, const char *value)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    char *end = nullptr;
-    unsigned long v = value && *value ? strtoul(value, &end, 10) : 999;
-    if (!value || !*value || *end != '\0' || v > 255) {
-        fprintf(stderr, "peri: brightness-kept takes a whole number from 0 to 255\n");
-        return 2;
-    }
-    if (!node_allowed(name, false))
-        return 1;
-    const uint8_t args[3] = { 0x01, 0x00, (uint8_t)v };
-    return razer_send_and_print(name, 0x0f, 0x04, 3, args);
-}
-
-static int cmd_razer_scan_getters(const char *arg)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    if (!node_allowed(name, false))
-        return 1;
-    int fd = razer_open(name);
-    if (fd < 0)
-        return 1;
-    const uint8_t args[6] = { 0 };
-    int asked = 0, found = 0, silent_classes = 0;
-    for (unsigned cls = 0x00; cls <= 0x0f; cls++) {
-        int bad_in_a_row = 0;
-        for (unsigned id = 0x80; id <= 0xbf && bad_in_a_row < 5; id++) {
-            struct razer_reply reply;
-            uint8_t raw[RAZER_REPORT_LEN];
-            int got;
-            int rc = razer_call(fd, (uint8_t)cls, (uint8_t)id, 6, args, &reply, raw, &got);
-            asked++;
-            if (rc < 0) {
-                bad_in_a_row++;
-                continue;
-            }
-            bad_in_a_row = 0;
-            if (reply.status == 0x05)
-                continue;
-            found++;
-            printf("%02x %02x status %02x %zu", cls, id, reply.status, reply.len);
-            for (size_t i = 0; i < reply.len; i++)
-                printf(" %02x", reply.args[i]);
-            putchar('\n');
-        }
-        // A class that never answers is skipped after five tries, not scanned to the end.
-        if (bad_in_a_row >= 5) {
-            silent_classes++;
-            printf("%02x never answers: skipped\n", cls);
-        }
-    }
-    close(fd);
-    printf("asked %d, answered something other than 'not supported': %d, silent classes: %d\n", asked, found,
-           silent_classes);
-    return 0;
-}
-
-static int cmd_razer_color_set(const char *arg, const char *value)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    uint8_t args[6] = { 0x01, 0, 0, 0, 0, 0 };
-    if (value && strcmp(value, "ff0000") == 0)
-        args[1] = 0xff;
-    else if (value && strcmp(value, "000000") == 0)
-        ;
-    else {
-        bool ok = value && strlen(value) == 10;
-        for (int i = 0; ok && i < 10; i++)
-            ok = isxdigit((unsigned char)value[i]);
-        if (!ok) {
-            fprintf(stderr, "peri: color-set takes ten hex digits (the five bytes after the leading 01), ff0000 or 000000\n");
-            return 2;
-        }
-        for (int i = 0; i < 5; i++) {
-            char pair[3] = { value[2 * i], value[2 * i + 1], '\0' };
-            args[1 + i] = (uint8_t)strtoul(pair, nullptr, 16);
-        }
-    }
-    if (!node_allowed(name, false))
-        return 1;
-    return razer_send_and_print(name, 0x0f, 0x14, 6, args);
-}
-
-// A guessed write: the standard static-colour effect frame (class 0f, command 0x02) aimed at a zone
-// other than the main ring. Every effect sent so far used zone 0 (args byte 1); the mute ring may be
-// another. Zones 1 to ff, one static colour as six hex digits, storage 0 ("now"), checked before the
-// device is opened. A zone that does not exist should answer "not supported" or "failure".
-static int cmd_razer_zone_static(const char *arg, const char *zone, const char *rgb)
-{
-    const char *name = node_name(arg);
-    if (!name)
-        return 2;
-    // The zone is one or two hex digits, 1 to ff, or the word 'all' for 2 to ff in a row (one frame each).
-    char *zend = nullptr;
-    unsigned long zone_first = 0, zone_last = 0;
-    bool ok = zone && *zone && rgb && strlen(rgb) == 6;
-    const char *dash = ok ? strchr(zone, '-') : nullptr;
-    if (ok && strcmp(zone, "all") == 0) {
-        zone_first = 2;
-        zone_last = 0xff;
-    } else if (dash) {
-        // A range "lo-hi" in hex, each one or two digits, 1 <= lo <= hi <= ff.
-        char lo[3] = { 0 }, hi[3] = { 0 };
-        size_t lo_len = (size_t)(dash - zone), hi_len = strlen(dash + 1);
-        ok = lo_len >= 1 && lo_len <= 2 && hi_len >= 1 && hi_len <= 2;
-        if (ok) {
-            memcpy(lo, zone, lo_len);
-            memcpy(hi, dash + 1, hi_len);
-            char *e1 = nullptr, *e2 = nullptr;
-            zone_first = strtoul(lo, &e1, 16);
-            zone_last = strtoul(hi, &e2, 16);
-            ok = *e1 == '\0' && *e2 == '\0' && zone_first >= 1 && zone_first <= zone_last && zone_last <= 0xff;
-        }
-    } else if (ok) {
-        zone_first = zone_last = strtoul(zone, &zend, 16);
-        ok = strlen(zone) <= 2 && *zend == '\0' && zone_first >= 1 && zone_first <= 0xff;
-    }
-    for (int i = 0; ok && i < 6; i++)
-        ok = isxdigit((unsigned char)rgb[i]);
-    if (!ok) {
-        fprintf(stderr, "peri: zone-static takes a zone 1-ff in hex (or 'all') and six hex digits\n");
-        return 2;
-    }
-    uint8_t color[3];
-    for (int i = 0; i < 3; i++) {
-        char pair[3] = { rgb[2 * i], rgb[2 * i + 1], '\0' };
-        color[i] = (uint8_t)strtoul(pair, nullptr, 16);
-    }
-    uint8_t args[RAZER_EFFECT_ARGS_MAX];
-    size_t size = razer_effect_args(0x00, RAZER_EFFECT_STATIC, color, args);
-    if (size == 0)
-        return 2;
-    if (!node_allowed(name, false))
-        return 1;
-    int rc = 0, refused = 0;
-    for (unsigned long z = zone_first; z <= zone_last; z++) {
-        args[1] = (uint8_t)z;
-        if (zone_first == zone_last)
-            return razer_send_and_print(name, 0x0f, 0x02, (uint8_t)size, args);
-        int fd = razer_open(name);
-        if (fd < 0)
-            return 1;
-        struct razer_reply reply;
-        uint8_t raw[RAZER_REPORT_LEN];
-        int got;
-        int call = razer_call(fd, 0x0f, 0x02, (uint8_t)size, args, &reply, raw, &got);
-        close(fd);
-        if (call < 0 || reply.status != RAZER_STATUS_OK) {
-            refused++;
-            printf("zone %02lx: %s\n", z, call < 0 ? "no clean reply" : "refused");
-        }
-        rc |= call < 0;
-    }
-    printf("sent zones %02lx to %02lx; refused or unanswered: %d\n", zone_first, zone_last, refused);
-    return rc ? 1 : 0;
 }
 
 // The queries `peri razer90` may send to the DeathAdder: reads only (firmware, battery, charging,
@@ -1629,49 +1168,8 @@ int main(int argc, char **argv)
     if ((argc == 4 || argc == 5) && strcmp(argv[1], "feature") == 0)
         return cmd_feature(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
 
-    if ((argc == 5 || argc == 6) && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "getter") == 0)
-        return cmd_razer_getter(argv[2], argv[4], argc == 6 ? argv[5] : nullptr);
-
-    if (argc >= 5 && argc <= 7 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "class8") == 0)
-        return cmd_razer_class8(argv[2], argv[4], argc >= 6 ? argv[5] : nullptr, argc == 7 ? argv[6] : nullptr);
-
-    if (argc >= 6 && argc <= 8 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "zone-effect-kept") == 0)
-        return cmd_razer_zone_effect(argv[2], argv[4], argv[5], argc >= 7 ? argv[6] : nullptr,
-                                     argc == 8 ? argv[7] : nullptr, 1);
-
-    if (argc == 5 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "brightness-kept") == 0)
-        return cmd_razer_brightness_kept(argv[2], argv[4]);
-
-    if (argc >= 6 && argc <= 8 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "zone-effect") == 0)
-        return cmd_razer_zone_effect(argv[2], argv[4], argv[5], argc >= 7 ? argv[6] : nullptr,
-                                     argc == 8 ? argv[7] : nullptr, 0);
-
-    if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "frame-fill") == 0)
-        return cmd_razer_frame_fill(argv[2], argv[4], argv[5]);
-
-    if (argc == 4 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "effect-custom") == 0)
-        return cmd_razer_effect_custom(argv[2]);
-
-    if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "profile-static") == 0)
-        return cmd_razer_profile_static(argv[2], argv[4], argv[5]);
-
-    if (argc == 4 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "brightness-census") == 0)
-        return cmd_razer_brightness_census(argv[2]);
-
-    if (argc == 4 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "scan-getters") == 0)
-        return cmd_razer_scan_getters(argv[2]);
-
-    if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "zone-static") == 0)
-        return cmd_razer_zone_static(argv[2], argv[4], argv[5]);
-
-    if (argc == 5 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "color-set") == 0)
-        return cmd_razer_color_set(argv[2], argv[4]);
-
-    if (argc == 6 && strcmp(argv[1], "razer") == 0 && strcmp(argv[3], "display-set") == 0)
-        return cmd_razer_display_set(argv[2], argv[4], argv[5]);
-
-    if (argc >= 4 && argc <= 6 && strcmp(argv[1], "razer") == 0)
-        return cmd_razer(argv[2], argv[3], argc >= 5 ? argv[4] : nullptr, argc == 6 ? argv[5] : nullptr);
+    if (argc == 4 && strcmp(argv[1], "razer") == 0)
+        return cmd_razer(argv[2], argv[3]);
 
     if (argc == 4 && strcmp(argv[1], "razer90") == 0)
         return cmd_razer90(argv[2], argv[3]);
@@ -1703,6 +1201,6 @@ int main(int argc, char **argv)
     if (argc >= 4 && argc <= 7 && strcmp(argv[1], "set") == 0)
         return cmd_set(argc, argv);
 
-    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|display-switch [0-7 [0-7]]|tap [0-7 [0-7]]|display-set <0-3> <0-7>|getter <90-9f> [module 0-7, 94 only]|color-set <ff0000|000000|10 hex digits>|zone-static <1-ff|lo-hi|all> <rrggbb>|scan-getters|brightness-census|zone-effect <zone> <effect> [color [color2]]|zone-effect-kept <0-ff> <effect> [color [color2]]|brightness-kept <0-255>|frame-fill <rrggbb> <last 0-11>|effect-custom|class8 <id> [0-7 [0-7]]|profile-static <2-7> <rrggbb>|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
+    fprintf(stderr, "usage: peri <setup [--no-udev]|ping|list [--all] [--json]|modules [--json]|use <id>|remove <id>|monitor <node>|feature <node> <report-hex> [length]|razer <node> firmware|brightness|led-effect|led-rgb|razer90 <node> firmware|battery|charging|dpi|poll-rate|xap <node> <route-hex>|blob <node>|status <module-id>|controls <module-id>|fov <module-id> <cur|min|max|res|len|info|def> [size]|fov <module-id> set <wide|medium|narrow|0-2>|decode <hex>|--scan <file> [--summary]|audio <module-id> get|set gain=<n> monitor=<n> monitor_on=<yes|no> headphones=<n>|look <module-id> get|save|apply <unmuted|muted> [effect=<name>] [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>] [brightness=<n>]|set <module-id> brightness=<0-255>|dpi=<n>|poll=<125|500|1000>|<camera-control>=<n>|effect=<name> [color=<rrggbb>] [color2=<rrggbb>] [speed=<slow|fast>]|rgb get|set <key=value>...|save>\n");
     return 2;
 }

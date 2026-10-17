@@ -51,19 +51,6 @@ int main(void)
     check(razer_decode(real_bright, 0x0f, 0x84, &real_reply) == 0 && real_reply.len == 3
               && real_reply.args[2] == 0x66,
           "decode real brightness reply");
-    // Two getters sent to the same microphone on 2026-10-16 with zero arguments, class 0x0f commands
-    // 0x92 and 0x93 (the setters 0x12 and 0x13 are named "display switch" and "tap" in a public note
-    // for the V3 Pro). What the bytes mean is not known; the frames are real and decode cleanly.
-    const uint8_t real_display[RAZER_REPORT_LEN] = { 0x07, 0x02, 0x52, 0x00, 0x00, 0x00, 0x03,
-                                                     0x0f, 0x92, 0x00, 0x00, 0x01, [62] = 0xcd };
-    check(razer_decode(real_display, 0x0f, 0x92, &real_reply) == 0 && real_reply.len == 3
-              && real_reply.args[0] == 0x00 && real_reply.args[1] == 0x00 && real_reply.args[2] == 0x01,
-          "decode real display-switch reply");
-    const uint8_t real_tap[RAZER_REPORT_LEN] = { 0x07, 0x02, 0x52, 0x00, 0x00, 0x00, 0x04,
-                                                 0x0f, 0x93, 0x00, 0x02, 0x00, 0x01, [62] = 0xc9 };
-    check(razer_decode(real_tap, 0x0f, 0x93, &real_reply) == 0 && real_reply.len == 4
-              && real_reply.args[1] == 0x02 && real_reply.args[3] == 0x01,
-          "decode real tap reply");
     uint8_t tampered[RAZER_REPORT_LEN];
     memcpy(tampered, real_bright, sizeof tampered);
     tampered[11] = 0x67;
