@@ -7,10 +7,10 @@ A daemon (`perid`) owns the devices and speaks to them; the CLI (`peri`) and the
 | Device | Engine | What works |
 |--------|--------|------------|
 | Drop CTRL v2 keyboard | QMK XAP | RGB effect, colour, speed, brightness (capped by the board's own limit), LED groups |
-| Razer Seiren V3 Chroma microphone | Razer vendor reports (reverse engineered) | Effects (colour, breathing, spectrum, wave, off), brightness, two saved looks that follow the mic's mute state, its mute and dial reports, and the sound card's gain, monitor and headphone levels |
+| Razer Seiren V3 Chroma microphone | Razer vendor reports (reverse engineered) | Effects (colour, breathing, spectrum, wave, off), brightness, two saved looks, and the sound card's gain, monitor and headphone levels |
 | Razer DeathAdder V3 Pro mouse | Razer long vendor frame (public references, checked on the device) | Reads firmware, battery, charging, DPI and poll rate; sets DPI and poll rate (125, 500 or 1000 Hz). No lighting on this model |
 
-periferi is unofficial and not affiliated with Drop, Razer or QMK. The Seiren's protocol is not published: what is here was worked out from public sources and by watching the device, and some Synapse settings (the mute light colour, tap remapping, the audio effects) are not supported. Writes to a device may be kept in its own memory. The mouse's DPI and poll rate are sent by `peri set` and by the panel's controls (the mouse stores every DPI set). The microphone's saved looks are sent by `peri look apply`, by the panel's Apply button and, unless you turn it off with `peri look <module> follow off`, whenever the mic's mute state changes. The project's tests never touch hardware.
+periferi is unofficial and not affiliated with Drop, Razer or QMK. The Seiren's protocol is not published: what is here was worked out from public sources and by watching the device, and some Synapse settings (the mute light colour, tap remapping, the audio effects) are not supported. Writes to a device may be kept in its own memory. The mouse's DPI and poll rate are sent by `peri set` and by the panel's controls (the mouse stores every DPI set). The microphone's saved looks are sent by `peri look apply`, and by the panel's Apply button. Nothing watches the mic. The project's tests never touch hardware.
 
 ## Build and install
 
@@ -34,13 +34,13 @@ peri use drop-ctrl-v2                  # install a module (the Seiren's is razer
 peri rgb get                           # the keyboard's lighting
 peri rgb set hue=170 sat=255
 
-peri status razer-seiren-v3-chroma     # firmware, brightness, mute state, dial
+peri status razer-seiren-v3-chroma     # firmware, brightness
 peri look razer-seiren-v3-chroma save unmuted effect=breathing color=00ff40 brightness=200
 peri look razer-seiren-v3-chroma apply unmuted
 peri audio razer-seiren-v3-chroma get  # gain, monitor mix, headphones
 ```
 
-`peri` with no arguments prints every command. The microphone cannot report its own effect or colour, so periferi keeps two **looks** for it (Unmuted and Muted) in `~/.config/peri/state/`, and applies the matching one when the mic's mute state changes.
+`peri` with no arguments prints every command. The microphone cannot report its own effect or colour, so periferi keeps two **looks** for it (Unmuted and Muted) in `~/.config/peri/state/`. Apply sends one to the mic when you ask; the mic's own firmware decides what it shows while muted.
 
 For the panel, `just plugin` installs it as an Omarchy shell widget; `omarchy restart shell` loads it. The Quickshell core in `quickshell/peri/` imports nothing from the host shell, so other hosts can use it.
 
